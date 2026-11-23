@@ -1,5 +1,6 @@
 package app.framelink.camera;
 
+import android.util.Log;
 import org.json.JSONObject;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -14,6 +15,7 @@ import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.concurrent.Semaphore;
 import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSocket;
 
 final class LinkServer implements AutoCloseable {
@@ -111,6 +113,8 @@ final class LinkServer implements AutoCloseable {
                 if ("ping".equals(command.optString("type"))) session.offer(Wire.json(Wire.json("pong")));
                 else listener.command(command);
             }
+        } catch (SSLException error) {
+            if (!server.isClosed()) Log.d("FrameLink", "TLS connection ended", error);
         } catch (Exception ignored) {
             // A timeout, invalid request or disconnection only ends this peer.
         } finally {
