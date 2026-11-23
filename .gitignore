@@ -1,0 +1,11 @@
+.gradle/
+**/build/
+local.properties
+*.jks
+*.keystore
+node_modules/
+desktop/dist/
+desktop/native/*.exe
+desktop/assets/*.tflite
+
+desktop/native/*.pdb

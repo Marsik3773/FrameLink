@@ -1,0 +1,62 @@
+{
+  "name": "framelink",
+  "version": "0.1.0",
+  "description": "Android camera and microphone for Windows",
+  "author": "FrameLink",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "vendor": "node scripts/model.cjs",
+    "test": "node --test",
+    "build:win": "electron-builder --win --x64 --publish never"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.32"
+  },
+  "devDependencies": {
+    "electron": "42.11.18",
+    "electron-builder": "26.11.1"
+  },
+  "build": {
+    "appId": "app.framelink.desktop",
+    "productName": "FrameLink",
+    "files": [
+      "src/**",
+      "assets/**"
+    ],
+    "asarUnpack": [
+      "node_modules/@mediapipe/tasks-vision/**",
+      "assets/**"
+    ],
+    "extraResources": [
+      {
+        "from": "native/framelink-virtualcam.exe",
+        "to": "framelink-virtualcam.exe"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "FrameLink-LICENSE.txt"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signAndEditExecutable": false,
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "artifactName": "FrameLink-Windows-x64-Setup.exe",
+      "oneClick": false,
+      "allowElevation": false,
+      "perMachine": false,
+      "script": "scripts/installer.nsi",
+      "differentialPackage": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Marsik3773/FrameLink.git"
+  }
+}

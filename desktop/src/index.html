@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' blob:; media-src blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <link rel="stylesheet" href="studio.css">
+  <link rel="icon" href="../assets/icon.png">
+  <title>FrameLink</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="../assets/icon.png" alt="" width="40" height="40"><span>FrameLink</span></div>
+    <div class="connection-status" id="connectionStatus" data-state="idle" role="status"><i></i><span id="statusText">Не подключено</span></div>
+  </header>
+
+  <main class="workspace">
+    <section class="viewer">
+      <div class="viewer-head">
+        <h1>Предпросмотр</h1>
+        <div class="viewer-actions">
+          <button class="subtle" type="button" id="mirror" aria-pressed="false" disabled>Зеркало</button>
+          <button class="subtle" type="button" id="snapshot" disabled>Снимок PNG</button>
+        </div>
+      </div>
+      <div class="stage" id="stage">
+        <canvas id="canvas" hidden aria-label="Видео с камеры телефона"></canvas>
+        <div class="empty" id="empty">
+          <img alt="" src="../assets/icon.png" width="68" height="68">
+          <h2 id="emptyTitle">Подключите телефон</h2>
+          <p id="emptyHint">Запустите FrameLink на Android, затем введите адрес и код подключения.</p>
+        </div>
+      </div>
+      <div class="viewer-foot">
+        <span id="videoStats">Видеопоток выключен</span>
+        <span id="effectStatus" role="status"></span>
+      </div>
+      <div class="output-card">
+        <div>
+          <h2>Виртуальная камера</h2>
+          <p id="virtualHint">Выберите OBS Virtual Camera в Discord или другом приложении.</p>
+        </div>
+        <button type="button" id="virtualToggle" disabled>Запустить</button>
+      </div>
+    </section>
+
+    <aside class="inspector" aria-label="Настройки">
+      <section class="connect-card">
+        <div class="section-head"><h2>Подключение</h2></div>
+        <form id="connection">
+          <div class="segmented" aria-label="Режим подключения">
+            <label><input type="radio" name="transport" value="ip" checked>Wi-Fi / IP</label>
+            <label><input type="radio" name="transport" value="usb">USB</label>
+          </div>
+          <div class="addresses">
+            <label class="field" id="hostField"><span>IP-адрес</span><input id="host" placeholder="192.168.1.24" spellcheck="false" autocomplete="off"></label>
+            <label class="field"><span>Порт</span><input id="port" type="number" value="4747" min="1024" max="65535" inputmode="numeric" required></label>
+          </div>
+          <label class="field"><span>Код с телефона</span><input id="pairCode" type="password" placeholder="Вставьте код подключения" autocomplete="off" required></label>
+          <p class="muted" id="usbHint" hidden>Для USB-отладки нужен ADB. Для USB-модема используйте подключение по IP.</p>
+          <p class="error" id="connectionError" role="alert" hidden></p>
+          <button class="primary" id="connectButton" type="submit">Подключить</button>
+        </form>
+      </section>
+
+      <section class="settings-card">
+        <div class="tabbar" role="tablist" aria-label="Настройки">
+          <button id="tab-camera" type="button" role="tab" aria-controls="camera-panel" aria-selected="true">Камера</button>
+          <button id="tab-effects" type="button" role="tab" aria-controls="effects-panel" aria-selected="false" tabindex="-1">Эффекты</button>
+          <button id="tab-output" type="button" role="tab" aria-controls="output-panel" aria-selected="false" tabindex="-1">Вывод</button>
+        </div>
+
+        <section id="camera-panel" class="tab-content" role="tabpanel" aria-labelledby="tab-camera">
+          <p class="muted" id="cameraHint">Настройки появятся после подключения телефона.</p>
+          <fieldset id="cameraFields" disabled hidden>
+            <label class="control"><span>Объектив</span><select id="lens"><option value="rear">Основная</option><option value="front">Фронтальная</option></select></label>
+            <div class="two-controls">
+              <label class="control"><span>Разрешение</span><select id="resolution"><option value="360">360p</option><option value="480">480p</option><option value="720" selected>720p</option><option value="1080">1080p</option></select></label>
+              <label class="control"><span>Частота кадров</span><select id="fps"><option value="24">24 FPS</option><option value="30" selected>30 FPS</option><option value="60">60 FPS</option></select></label>
+            </div>
+            <label class="control slider"><span>Приближение <output id="zoomValue">1×</output></span><input id="zoom" type="range" min="100" max="400" value="100"></label>
+            <label class="control"><span>Баланс белого</span><select id="wb"><option value="1">Авто</option></select></label>
+            <label class="toggle" id="manualExposureRow"><input id="manualExposure" type="checkbox">Ручная экспозиция</label>
+            <label class="control slider" id="evRow"><span>Экспокоррекция <output id="evValue">0 EV</output></span><input id="ev" type="range" min="-6" max="6" value="0"></label>
+            <label class="control slider" id="shutterRow" hidden><span>Выдержка <output id="shutterValue"></output></span><input id="shutter" type="range"></label>
+            <label class="control slider" id="isoRow" hidden><span>ISO <output id="isoValue"></output></span><input id="iso" type="range"></label>
+            <label class="toggle" id="manualFocusRow"><input id="manualFocus" type="checkbox">Ручной фокус</label>
+            <label class="control slider" id="focusRow" hidden><span>Фокус <output id="focusValue"></output></span><input id="focus" type="range"></label>
+          </fieldset>
+        </section>
+
+        <section id="effects-panel" class="tab-content" role="tabpanel" aria-labelledby="tab-effects" hidden>
+          <label class="control"><span>Фон</span><select id="effect">
+            <option value="0">Камера без замены фона</option>
+            <option value="1">Хромакей</option>
+            <option value="2">Вырезать человека</option>
+            <option value="3">Размыть фон</option>
+          </select></label>
+          <div class="effect-group" id="chromaSettings" hidden>
+            <label class="color-control"><span>Цвет хромакея</span><input id="keyColor" type="color" value="#00b140"></label>
+            <label class="control slider"><span>Допуск</span><input id="tolerance" type="range" min="3" max="50" value="16"></label>
+          </div>
+          <label class="control slider" id="maskSettings" hidden><span>Граница силуэта</span><input id="maskThreshold" type="range" min="22" max="78" value="50"></label>
+          <label class="control slider" id="blurSettings" hidden><span>Сила размытия</span><input id="blur" type="range" min="4" max="68" value="31"></label>
+          <div id="backgroundSettings" class="effect-group" hidden>
+            <div class="button-row"><button id="pickBackground" class="subtle" type="button">Выбрать файл</button><button id="clearBackground" class="subtle" type="button" hidden>Убрать</button></div>
+            <input type="file" id="background" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/bmp,video/mp4,video/webm" hidden>
+            <p class="muted" id="backgroundName">Прозрачный фон · PNG, GIF или видео для замены</p>
+          </div>
+          <hr>
+          <label class="control slider"><span>Яркость</span><input id="brightness" type="range" min="-35" max="35" value="0"></label>
+          <label class="control slider"><span>Контраст</span><input id="contrast" type="range" min="45" max="155" value="100"></label>
+          <label class="control slider"><span>Насыщенность</span><input id="saturation" type="range" min="0" max="185" value="100"></label>
+          <label class="toggle"><input id="mono" type="checkbox">Чёрно-белое видео</label>
+          <button class="subtle" id="resetEffects" type="button">Сбросить эффекты</button>
+        </section>
+
+        <section id="output-panel" class="tab-content" role="tabpanel" aria-labelledby="tab-output" hidden>
+          <h3>Видео</h3>
+          <p id="driverState" class="muted">Проверка OBS Virtual Camera…</p>
+          <div class="two-controls">
+            <label class="control"><span>Разрешение вывода</span><select id="outputSize"><option value="640x360">640 × 360</option><option value="960x540">960 × 540</option><option value="1280x720" selected>1280 × 720</option><option value="1920x1080">1920 × 1080</option></select></label>
+            <label class="control"><span>Частота кадров</span><select id="outputFps"><option value="24">24 FPS</option><option value="30" selected>30 FPS</option><option value="60">60 FPS</option></select></label>
+          </div>
+          <div class="button-row"><button type="button" class="subtle" id="obsLink">Скачать OBS Studio</button><button type="button" class="subtle" id="refreshDriver">Проверить</button></div>
+          <hr>
+          <h3>Микрофон телефона</h3>
+          <p id="audioState" class="muted">Микрофон включается на телефоне.</p>
+          <label class="toggle"><input id="audioEnabled" type="checkbox">Выводить звук на ПК</label>
+          <label class="control"><span>Устройство вывода</span><select id="audioDevice"><option value="">Системное устройство</option></select></label>
+          <label class="control slider"><span>Громкость</span><input id="volume" type="range" min="0" max="150" value="100"></label>
+          <label class="control slider"><span>Задержка звука <output id="delayValue">0 мс</output></span><input id="audioDelay" type="range" min="0" max="500" step="10" value="0"></label>
+          <meter id="audioLevel" min="0" max="1" value="0" aria-label="Уровень микрофона"></meter>
+          <p class="muted">Для Discord направьте звук на CABLE Input и выберите CABLE Output как микрофон.</p>
+          <div class="button-row"><button type="button" class="subtle" id="audioLink">VB-CABLE</button><button type="button" class="subtle" id="adbLink">Android Platform Tools</button></div>
+          <p class="error" id="audioError" role="alert" hidden></p>
+        </section>
+      </section>
+    </aside>
+  </main>
+  <script type="module" src="studio.mjs"></script>
+</body>
+</html>
