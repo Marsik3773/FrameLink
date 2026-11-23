@@ -1,6 +1,7 @@
 import { Compositor } from './compositor.mjs';
 import { Background } from './background.mjs';
 import { Monitor } from './audio.mjs';
+import { LayerStack } from './layers.mjs';
 
 const el = id => document.getElementById(id);
 const api = window.frameLink;
@@ -19,6 +20,7 @@ try {
   compositor = new Compositor(canvas);
 } catch (error) {
   text('emptyHint', error.message);
+  show('emptyHint', true);
 }
 let connection = 'idle';
 let decoder;
@@ -33,8 +35,11 @@ let maskEpoch = 0;
 let lastMask = 0;
 let maskStatus = '';
 let renderScheduled = false;
+let sceneVersion = 0;
 let virtual;
-let driverReady = false;
+let outputChange = Promise.resolve();
+let scanPending = false;
+let devices = [];
 let cameraState;
 let queuedSettings = {};
 let settingsTimer;
@@ -52,6 +57,7 @@ const background = new Background((image, width, height) => {
 });
 
 const monitor = new Monitor(peak => { el('audioLevel').value = peak; });
+const layers = new LayerStack(compositor, api, redraw);
 
 function setConnection(state, message = '') {
   connection = state;
@@ -60,6 +66,7 @@ function setConnection(state, message = '') {
   text('connectButton', { idle: 'Подключить', connecting: 'Отменить', live: 'Отключить' }[state]);
   for (const input of el('connection').querySelectorAll('input')) input.disabled = state !== 'idle';
   el('cameraFields').disabled = state !== 'live';
+  renderDevices();
   errorText('connectionError', message);
   if (state === 'idle') {
     clearTimeout(settingsTimer);
@@ -70,15 +77,15 @@ function setConnection(state, message = '') {
     setAudioState(false);
     show('cameraHint', true);
     show('cameraFields', false);
-    text('cameraHint', 'Настройки появятся после подключения телефона.');
-    stopVirtual();
+    scanDevices();
   }
 }
 
 function setTransport() {
   const usb = el('connection').elements.transport.value === 'usb';
   show('hostField', !usb);
-  show('usbHint', usb);
+  renderDevices();
+  if (!usb) scanDevices();
   el('host').required = !usb;
 }
 
@@ -105,15 +112,66 @@ el('connection').addEventListener('submit', async event => {
     el('host').value = endpoint.host;
     el('port').value = endpoint.port;
   }
-  const code = el('pairCode').value;
+  await connectTo(endpoint);
+});
+
+async function connectTo(endpoint) {
+  if (connection !== 'idle') return;
   setConnection('connecting');
   try {
     localStorage.setItem('framelink-address', JSON.stringify(endpoint));
-    await api.connect({ ...endpoint, code });
+    await api.connect(endpoint);
   } catch (error) {
     if (connection === 'connecting') setConnection('idle', error.message);
   }
-});
+}
+
+function renderDevices() {
+  const usb = el('connection').elements.transport.value === 'usb';
+  const visible = !usb && connection === 'idle';
+  show('discoveryResults', visible);
+  el('scanDevices').disabled = !visible || scanPending;
+  if (!visible) return;
+  el('devices').replaceChildren(...devices.map(device => {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    const icon = document.createElement('i');
+    const name = document.createElement('span');
+    const address = document.createElement('span');
+    button.type = 'button';
+    button.disabled = device.busy;
+    icon.className = 'bi bi-phone';
+    icon.setAttribute('aria-hidden', 'true');
+    name.textContent = device.name;
+    address.className = 'device-ip';
+    address.textContent = device.busy ? 'Занят' : device.host + ':' + device.port;
+    button.append(icon, name, address);
+    button.addEventListener('click', () => {
+      el('host').value = device.host;
+      el('port').value = device.port;
+      connectTo({ host: device.host, port: device.port, transport: 'ip' });
+    });
+    item.append(button);
+    return item;
+  }));
+}
+
+async function scanDevices(showProgress = false) {
+  if (scanPending || connection !== 'idle' || el('connection').elements.transport.value === 'usb') return;
+  scanPending = true;
+  if (showProgress) errorText('discoveryHint', 'Поиск…');
+  renderDevices();
+  try { devices = await api.discover(); }
+  catch { devices = []; }
+  finally {
+    scanPending = false;
+    if (devices.length || showProgress) errorText('discoveryHint', devices.length ? '' : 'Телефоны не найдены');
+    renderDevices();
+  }
+}
+
+el('scanDevices').addEventListener('click', () => scanDevices(true));
+setInterval(() => scanDevices(), 5500);
 
 window.addEventListener('message', event => {
   if (event.origin !== location.origin || event.source !== window || event.data !== 'framelink-port') return;
@@ -130,8 +188,19 @@ function bytesOf(value) {
 
 function receive(event, port) {
   if (event.type === 'virtualStopped') {
-    if (virtual) stopVirtual(false);
-    if (event.message) text('virtualHint', event.message);
+    if (event.message) {
+      stopVirtual(false);
+      errorText('virtualError', event.message);
+    }
+    return;
+  }
+  if (event.type === 'browserFrame') {
+    port.postMessage({ browserAck: event.id });
+    layers.browserFrame(event, bytesOf(event.pixels));
+    return;
+  }
+  if (event.type === 'browserError') {
+    layers.browserError(event);
     return;
   }
   if (event.type === 'frame') port.postMessage('frame-ack');
@@ -140,7 +209,7 @@ function receive(event, port) {
     case 'ready':
       preferHardware = true;
       setConnection('live');
-      setEmpty('Ожидание видеопотока', 'Подключено к телефону.');
+      setEmpty('Ожидание видео');
       break;
     case 'disconnected': setConnection('idle', event.message); break;
     case 'settings': synchronizeCamera(event); break;
@@ -155,11 +224,11 @@ function receive(event, port) {
   }
 }
 
-function setEmpty(title, hint) {
+function setEmpty(title, hint = '') {
   text('emptyTitle', title);
   text('emptyHint', hint);
-  show('empty', true);
-  show('canvas', false);
+  show('emptyHint', Boolean(hint));
+  redraw();
 }
 
 function discardDecoder() {
@@ -178,11 +247,9 @@ function endVideo() {
   invalidateMask();
   if (compositor) compositor.hasFrame = false;
   el('mirror').disabled = true;
-  el('snapshot').disabled = true;
-  el('virtualToggle').disabled = true;
-  text('videoStats', 'Видеопоток выключен');
+  text('videoStats', '');
   text('effectStatus', '');
-  setEmpty('Подключите телефон', 'Запустите FrameLink на Android, затем введите адрес и код подключения.');
+  setEmpty('Нет видео');
 }
 
 function configureVideo(meta) {
@@ -210,6 +277,7 @@ function configureVideo(meta) {
       api.keyframe();
     } else {
       receivedFrame = false;
+      compositor.hasFrame = false;
       setEmpty('Ошибка декодера H.264', error.message);
     }
   };
@@ -217,22 +285,19 @@ function configureVideo(meta) {
     output: frame => {
       if (active !== decoder) { frame.close(); return; }
       try {
-        compositor.loadFrame(frame, config.rotation);
+        compositor.loadFrame(frame);
         requestMask(frame);
         lastVideoTime = performance.now();
         frameCounter++;
         if (!receivedFrame) {
           receivedFrame = true;
-          show('empty', false);
-          show('canvas', true);
           el('mirror').disabled = false;
-          el('snapshot').disabled = false;
-          el('virtualToggle').disabled = false;
           stats();
         }
         redraw();
       } catch (error) {
         receivedFrame = false;
+        compositor.hasFrame = false;
         setEmpty('Кадр не отобразился', error.message);
       } finally { frame.close(); }
     },
@@ -297,7 +362,7 @@ for (const tab of tabs) {
   tab.addEventListener('click', () => toggleTab(tab));
   tab.addEventListener('keydown', event => {
     const i = tabs.indexOf(tab);
-    const index = { ArrowLeft: (i + 2) % 3, ArrowRight: (i + 1) % 3, Home: 0, End: 2 }[event.key];
+    const index = { ArrowLeft: (i + tabs.length - 1) % tabs.length, ArrowRight: (i + 1) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
     if (index === undefined) return;
     event.preventDefault();
     toggleTab(tabs[index]);
@@ -381,17 +446,31 @@ function readVisuals() {
   return {
     rotation: config?.rotation || 0, effect: value('effect'), mirror: el('mirror').getAttribute('aria-pressed') === 'true',
     key, tolerance: value('tolerance') / 100, maskThreshold: value('maskThreshold') / 100,
-    blur: value('blur') * canvas.width / 1280,
+    blur: value('blur') * (config?.width || 1280) / 1280,
     adjustments: [value('brightness') / 100, value('contrast') / 100, value('saturation') / 100], mono: el('mono').checked
   };
 }
 
 function redraw() {
-  if (renderScheduled || !compositor?.hasFrame) return;
+  if (renderScheduled) return;
   renderScheduled = true;
   requestAnimationFrame(() => {
     renderScheduled = false;
-    if (compositor.hasFrame) compositor.draw(readVisuals());
+    const visible = layers.hasPicture(receivedFrame);
+    el('snapshot').disabled = !visible;
+    show('empty', !visible);
+    show('canvas', visible);
+    if (compositor) {
+      try {
+        compositor.draw(readVisuals(), layers.drawables());
+        sceneVersion++;
+      } catch (error) {
+        text('emptyHint', error.message);
+        show('emptyHint', true);
+        show('empty', true);
+        show('canvas', false);
+      }
+    }
   });
 }
 
@@ -415,7 +494,7 @@ function requestMask(frame) {
         return;
       }
       compositor.loadMask(data);
-      if (maskStatus !== 'ready') text('effectStatus', 'Сегментация включена');
+      if (maskStatus !== 'ready') text('effectStatus', '');
       maskStatus = 'ready';
       redraw();
     };
@@ -429,7 +508,7 @@ function requestMask(frame) {
   }
   if (!maskStatus) {
     maskStatus = 'loading';
-    text('effectStatus', 'Запуск сегментации…');
+    text('effectStatus', 'Загрузка эффекта…');
   }
   workerBusy = true;
   lastMask = performance.now();
@@ -466,8 +545,8 @@ el('mirror').addEventListener('click', () => {
   redraw();
 });
 el('snapshot').addEventListener('click', () => {
-  if (!receivedFrame) return;
-  compositor.draw(readVisuals());
+  if (!layers.hasPicture(receivedFrame)) return;
+  compositor.draw(readVisuals(), layers.drawables());
   canvas.toBlob(blob => {
     if (!blob) return;
     const url = URL.createObjectURL(blob);
@@ -500,7 +579,7 @@ function clearBackground() {
   background.clear();
   if (compositor) compositor.backgroundRatio = 0;
   show('clearBackground', false);
-  text('backgroundName', 'Прозрачный фон · PNG, GIF или видео для замены');
+  text('backgroundName', 'Прозрачный фон');
   redraw();
 }
 el('clearBackground').addEventListener('click', clearBackground);
@@ -511,74 +590,60 @@ el('resetEffects').addEventListener('click', () => {
   showEffectOptions();
 });
 
-async function checkDriver() {
-  driverReady = await api.virtualStatus().catch(() => false);
-  text('driverState', driverReady ? 'OBS Virtual Camera установлена' : 'Требуется OBS Virtual Camera из OBS Studio.');
-}
-el('refreshDriver').addEventListener('click', checkDriver);
-el('obsLink').addEventListener('click', () => api.open('obs'));
-el('audioLink').addEventListener('click', () => api.open('audio'));
-el('adbLink').addEventListener('click', () => api.open('adb'));
-checkDriver();
-
-el('virtualToggle').addEventListener('click', async () => {
-  if (virtual) { await stopVirtual(); return; }
-  const button = el('virtualToggle');
-  button.disabled = true;
-  try {
-    if (!driverReady) await checkDriver();
-    if (!driverReady) {
-      toggleTab(el('tab-output'));
-      throw new Error('Установите OBS Studio и нажмите «Проверить» в разделе «Вывод».');
-    }
-    const [width, height] = el('outputSize').value.split('x').map(Number);
-    const fps = value('outputFps');
+function configureOutput() {
+  const [width, height] = el('outputSize').value.split('x').map(Number);
+  const fps = value('outputFps');
+  compositor?.setSize(width, height);
+  redraw();
+  outputChange = outputChange.then(async () => {
+    if (!compositor) return;
+    await stopVirtual();
+    const installed = await api.virtualStatus();
+    text('driverState', installed ? 'FrameLink Camera' : 'Камера недоступна');
+    if (!installed) return;
     await api.virtualStart(width, height, fps);
-    if (connection !== 'live' || !receivedFrame) {
-      await api.virtualStop();
-      return;
-    }
-    const output = { width, height, fps, writing: false };
+    const output = { width, height, writing: false, version: -1, sentAt: 0 };
     virtual = output;
     output.timer = setInterval(() => pumpVirtual(output), 1000 / fps);
-    text('virtualToggle', 'Остановить');
-    text('virtualHint', 'OBS Virtual Camera активна · ' + width + ' × ' + height + ' · ' + fps + ' FPS');
-    el('outputSize').disabled = true;
-    el('outputFps').disabled = true;
-  } catch (error) {
-    text('virtualHint', error.message);
-  } finally {
-    button.disabled = !receivedFrame;
-  }
-});
+    el('virtualState').dataset.live = 'true';
+    errorText('virtualError', '');
+  }).catch(error => errorText('virtualError', error.message));
+}
 
 async function pumpVirtual(output) {
-  if (!receivedFrame || !compositor.scene.width || output.writing) return;
+  if (!compositor.scene.width || output.writing || compositor.gl.isContextLost()) return;
+  const now = performance.now();
+  if (output.version === sceneVersion && now - output.sentAt < 450) return;
   output.writing = true;
   try {
-    await api.virtualFrame(compositor.nv12(output.width, output.height));
+    const version = sceneVersion;
+    if (await api.virtualFrame(compositor.nv12(output.width, output.height))) {
+      output.version = version;
+      output.sentAt = now;
+    }
   } catch (error) {
     await stopVirtual();
-    text('virtualHint', error.message);
+    errorText('virtualError', error.message);
   } finally { output.writing = false; }
 }
 
 async function stopVirtual(useBridge = true) {
-  if (!virtual) return;
-  clearInterval(virtual.timer);
+  const output = virtual;
+  if (!output) return;
+  clearInterval(output.timer);
   virtual = null;
-  el('virtualToggle').disabled = true;
-  try { if (useBridge) await api.virtualStop(); } catch {}
-  text('virtualToggle', 'Запустить');
-  text('virtualHint', 'Выберите OBS Virtual Camera в Discord или другом приложении.');
-  el('outputSize').disabled = false;
-  el('outputFps').disabled = false;
-  el('virtualToggle').disabled = !receivedFrame;
+  el('virtualState').dataset.live = 'false';
+  if (useBridge) await api.virtualStop();
 }
+
+el('outputSize').addEventListener('change', configureOutput);
+el('outputFps').addEventListener('change', configureOutput);
+el('adbLink').addEventListener('click', () => api.open('adb'));
+configureOutput();
 
 function setAudioState(active) {
   monitor.active = active;
-  text('audioState', active ? 'Телефон передаёт звук' : 'Микрофон включается на телефоне.');
+  text('audioState', active ? 'Телефон передаёт звук' : 'Микрофон выключен');
   if (!active) el('audioLevel').value = 0;
 }
 

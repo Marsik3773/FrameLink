@@ -9,3 +9,5 @@ desktop/native/*.exe
 desktop/assets/*.tflite
 
 desktop/native/*.pdb
+
+desktop/native/*.dll

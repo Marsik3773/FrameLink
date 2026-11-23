@@ -8,6 +8,10 @@ async function invoke(channel, ...args) {
 
 contextBridge.exposeInMainWorld('frameLink', {
   connect: data => invoke('link:connect', data),
+  discover: () => invoke('link:discover'),
+  browserOpen: (...args) => invoke('browser:open', ...args),
+  browserClose: id => invoke('browser:close', id),
+  browserVisibility: (id, visible) => invoke('browser:visibility', id, visible),
   disconnect: () => invoke('link:disconnect'),
   settings: values => invoke('link:settings', values),
   keyframe: () => invoke('link:keyframe'),

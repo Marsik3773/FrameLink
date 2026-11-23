@@ -44,15 +44,12 @@ h3 { font-size: 14px }
 .stage:has(canvas:not([hidden])) { background: repeating-conic-gradient(#171c1e 0 25%, #111517 0 50%) 0 / 22px 22px }
 canvas { display: block; object-fit: contain; height: 100%; width: 100%; min-height: 0; min-width: 0 }
 .empty { max-width: 330px; text-align: center; padding: 18px }
-.empty img { border-radius: 18px; border: 1px solid #273736; margin-bottom: 17px }
 .empty h2 { font-size: 22px; letter-spacing: -.025em; margin-bottom: 9px }
 .empty p { color: var(--quiet); line-height: 1.48 }
 .viewer-foot { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--quiet); font-size: 12px }
 .viewer-foot span:first-child { font-variant-numeric: tabular-nums }
-.output-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel) }
-.output-card p { margin-top: 5px; font-size: 12px; line-height: 1.4; color: var(--quiet) }
 .inspector { display: grid; gap: 14px }
-.connect-card, .settings-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; min-width: 0; overflow: hidden }
+.connect-card, .settings-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; min-width: 0 }
 .connect-card { padding: 16px }
 #connection { display: grid; gap: 11px; margin-top: 12px }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 8px; border: 1px solid var(--line); background: #111516 }
@@ -68,7 +65,7 @@ canvas { display: block; object-fit: contain; height: 100%; width: 100%; min-hei
 .field input:disabled { opacity: .6 }
 .field input[type="number"] { appearance: textfield }
 .field input::-webkit-inner-spin-button { appearance: none }
-.tabbar { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line) }
+.tabbar { display: grid; grid-template-columns: repeat(3, 1fr) 48px; border-bottom: 1px solid var(--line) }
 .tabbar button { border: none; border-radius: 0; background: transparent; color: var(--quiet); border-bottom: 2px solid transparent; padding: 12px 4px 10px; font-size: 12px }
 .tabbar button[aria-selected="true"] { color: var(--mint); border-color: var(--mint) }
 .tab-content { padding: 14px 16px 16px; display: grid; gap: 12px }
@@ -89,3 +86,55 @@ fieldset { display: grid; gap: 12px; padding: 0; border: 0; min-width: 0; margin
 hr { margin: 0; border: 0; border-top: 1px solid var(--line) }
 meter { width: 100%; height: 9px; accent-color: var(--mint) }
 @media (min-width: 1450px) { .workspace { padding-inline: 37px; grid-template-columns: minmax(0,1fr) 370px } }
+
+.icon-button {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  justify-self: start;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--quiet);
+  background: #111617;
+  cursor: pointer;
+}
+.icon-button .bi { font-size: 16px; line-height: 1 }
+.icon-button[aria-pressed="true"] { color: var(--mint); background: #203733; border-color: #4c796a }
+.icon-button:disabled { opacity: .35 }
+.empty > .bi { display: block; color: #5d716d; font-size: 35px; margin-bottom: 10px }
+.empty h2 { font-size: 16px; color: var(--quiet); font-weight: 550 }
+.viewer-foot { justify-content: flex-start }
+#virtualState { margin-left: auto }
+#virtualState[data-live="true"] { color: var(--mint) }
+#videoStats:empty, #effectStatus:empty { display: none }
+.tabbar .tab-icon { font-size: 15px }
+.device-list, .layer-list { list-style: none; padding: 0; margin: 0 }
+.device-list { display: grid; gap: 5px; max-height: 138px; overflow-y: auto }
+.device-list button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; text-align: left; font-size: 12px; background: #121718 }
+.device-list button > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.device-list button .device-ip { margin-left: auto; white-space: nowrap; font-size: 11px; color: var(--quiet) }
+.device-list:empty + #discoveryHint { padding-block: 3px }
+#discoveryResults:has(.device-list:empty):has(#discoveryHint[hidden]) { display: none }
+.layer-list { display: grid; gap: 4px; max-height: 196px; overflow-y: auto }
+.layer-row { display: flex; align-items: center; min-width: 0; gap: 7px; padding: 3px 4px; border: 1px solid #2a3433; border-radius: 8px; background: #121718 }
+.layer-row[data-selected="true"] { background: #20332f; border-color: #4c7164 }
+.layer-row[data-drop="before"] { box-shadow: inset 0 2px var(--mint) }
+.layer-row[data-drop="after"] { box-shadow: inset 0 -2px var(--mint) }
+.layer-grip { cursor: grab; color: var(--quiet); margin-left: 2px }
+button.layer-name { flex: 1; display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; border: none; padding: 5px 0; background: transparent; text-align: left; color: var(--text); font-weight: 550 }
+.layer-name .bi { color: var(--mint); flex-shrink: 0 }
+.layer-eye { width: 28px; height: 28px; border: 0 }
+.layer-eye .bi { font-size: 14px }
+.layer-eye[aria-pressed="true"] { background: transparent; border: 0 }
+.layer-toolbar { display: flex; align-items: center; gap: 5px; position: relative }
+.layer-toolbar details { position: relative }
+.layer-toolbar summary { list-style: none }
+.layer-toolbar summary::-webkit-details-marker { display: none }
+.layer-menu { position: absolute; z-index: 3; top: 40px; left: 0; display: grid; gap: 2px; padding: 5px; background: #202827; border: 1px solid #40504b; border-radius: 8px; min-width: 151px }
+.layer-menu button { display: flex; align-items: center; gap: 9px; border: 0; background: transparent; text-align: left; white-space: nowrap; padding: 7px 8px; font-size: 12px }
+.layer-menu i { color: var(--mint) }
+.url-field { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 6px }
+.field textarea { font: inherit; padding: 7px 8px; min-height: 50px; resize: vertical; color: var(--text); border: 1px solid #354142; border-radius: 7px; background: #121718 }
+#layerEditor .two-controls { row-gap: 8px }

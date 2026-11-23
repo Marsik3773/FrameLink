@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, net, session, shell, MessageChannelMain } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, session, shell, Tray, Menu, MessageChannelMain } = require('electron');
 const { join, resolve, extname } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { readFile } = require('node:fs/promises');
@@ -7,13 +7,13 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { Link, parseConnection } = require('./link.cjs');
 const { VirtualCamera } = require('./virtual.cjs');
+const { discover } = require('./discovery.cjs');
+const { BrowserLayers } = require('./browser-layer.cjs');
 
 const run = promisify(execFile);
 const origin = 'app://framelink';
 const root = resolve(__dirname, '..');
 const urls = {
-  obs: 'https://obsproject.com/download',
-  audio: 'https://vb-audio.com/Cable/',
   adb: 'https://developer.android.com/tools/releases/platform-tools'
 };
 
@@ -31,12 +31,15 @@ function resource(url) {
 }
 
 let window;
+let tray;
+let search;
 let streamPort;
 let link;
 let generation = 0;
 let forwardPort;
 let closing = false;
 const virtual = new VirtualCamera(publish);
+const browsers = new BrowserLayers(publish);
 
 function publish(event) {
   streamPort?.postMessage(event);
@@ -64,13 +67,13 @@ function adb(args) {
   return run(command, args, { windowsHide: true, timeout: 5500, maxBuffer: 32 * 1024 });
 }
 
-async function connect({ host, port, code, transport }) {
+async function connect({ host, port, transport }) {
   closeLink();
   const attempt = generation;
   await releaseForward();
   if (attempt !== generation) return false;
   const usb = transport === 'usb';
-  const requested = parseConnection(usb ? '127.0.0.1' : host, port, code);
+  const requested = parseConnection(usb ? '127.0.0.1' : host, port);
   if (usb) {
     try {
       const { stdout } = await adb(['forward', 'tcp:0', 'tcp:' + requested.port]);
@@ -111,6 +114,13 @@ function registerHandlers() {
     });
   }
   handler('link:connect', connect);
+  handler('link:discover', () => {
+    if (!search) search = discover().finally(() => { search = null; });
+    return search;
+  });
+  handler('browser:open', (...args) => browsers.open(...args));
+  handler('browser:close', id => browsers.close(id));
+  handler('browser:visibility', (id, visible) => browsers.visibility(id, visible));
   handler('link:disconnect', async () => { closeLink(); await releaseForward(); });
   handler('link:settings', values => {
     if (!values || typeof values !== 'object') return;
@@ -131,7 +141,22 @@ function registerHandlers() {
   });
 }
 
-app.whenReady().then(() => {
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => showWindow());
+  app.whenReady().then(createWindow);
+}
+
+function showWindow() {
+  if (!window || window.isDestroyed()) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
+
+function createWindow() {
+  browsers.init();
   protocol.handle('app', async request => {
     const filename = resource(request.url);
     if (!filename) return new Response('Not found', { status: 404 });
@@ -152,7 +177,7 @@ app.whenReady().then(() => {
   });
   window = new BrowserWindow({
     width: 1260, height: 820, minWidth: 900, minHeight: 655,
-    title: 'FrameLink', autoHideMenuBar: true, backgroundColor: '#101315',
+    title: 'FrameLink', autoHideMenuBar: true, icon: join(root, 'assets', 'icon.png'), backgroundColor: '#101315',
     show: false, webPreferences: { preload: join(__dirname, 'preload.cjs'), sandbox: true, backgroundThrottling: false }
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -164,18 +189,34 @@ app.whenReady().then(() => {
     streamPort = port.port1;
     streamPort.on('message', event => {
       if (event.data === 'frame-ack') link?.acknowledge();
+      if (event.data?.browserAck) browsers.acknowledge(event.data.browserAck);
     });
     streamPort.start();
     window.webContents.postMessage('link:stream', null, [port.port2]);
   });
   window.once('ready-to-show', () => window.show());
+  tray = new Tray(join(root, 'assets', 'icon.png'));
+  tray.setToolTip('FrameLink');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Открыть', click: showWindow },
+    { label: 'Выйти', click: () => app.quit() }
+  ]));
+  tray.on('double-click', showWindow);
   window.on('close', event => {
     if (closing) return;
     event.preventDefault();
-    closing = true;
-    closeLink();
-    Promise.allSettled([virtual.stop(), releaseForward()]).then(() => window.destroy());
+    window.hide();
   });
   window.loadURL(origin + '/src/index.html');
+}
+
+app.on('before-quit', event => {
+  if (closing) return;
+  event.preventDefault();
+  closing = true;
+  closeLink();
+  browsers.clear();
+  tray?.destroy();
+  Promise.allSettled([virtual.stop(), releaseForward()]).then(() => app.quit());
 });
 app.on('window-all-closed', () => app.quit());

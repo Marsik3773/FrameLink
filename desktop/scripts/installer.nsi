@@ -2,11 +2,9 @@
 !include "x64.nsh"
 
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\FrameLink"
-!define MUI_FINISHPAGE_RUN "$INSTDIR\FrameLink.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Запустить FrameLink"
 
-InstallDir "$LOCALAPPDATA\Programs\FrameLink"
-RequestExecutionLevel user
+InstallDir "$PROGRAMFILES64\FrameLink"
+RequestExecutionLevel admin
 ShowInstDetails show
 
 !insertmacro MUI_PAGE_WELCOME
@@ -21,11 +19,12 @@ Function .onInit
     MessageBox MB_ICONSTOP "Для FrameLink нужна 64-битная Windows."
     Abort
   ${EndIf}
-  StrCpy $INSTDIR "$LOCALAPPDATA\Programs\FrameLink"
+  StrCpy $INSTDIR "$PROGRAMFILES64\FrameLink"
 FunctionEnd
 
 Section "FrameLink"
-  SetShellVarContext current
+  SetShellVarContext all
+  SetRegView 64
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
   SetCompress off
@@ -37,35 +36,59 @@ Section "FrameLink"
   IfErrors installation_failed
   IfFileExists "$INSTDIR\FrameLink.exe" 0 installation_failed
   IfFileExists "$INSTDIR\resources\app.asar" 0 installation_failed
+  ${If} ${FileExists} "$INSTDIR\resources\FrameLinkCamera-x64.dll"
+    ClearErrors
+    ExecWait '"$WINDIR\Sysnative\regsvr32.exe" /s "$INSTDIR\resources\FrameLinkCamera-x64.dll"' $0
+    IfErrors camera_failed
+    StrCmp $0 0 +2
+    Goto camera_failed
+  ${Else}
+    Goto installation_failed
+  ${EndIf}
+  ClearErrors
+  ExecWait '"$WINDIR\SysWOW64\regsvr32.exe" /s "$INSTDIR\resources\FrameLinkCamera-x86.dll"' $0
+  IfErrors rollback
+  StrCmp $0 0 +2
+  Goto rollback
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateShortcut "$SMPROGRAMS\FrameLink.lnk" "$INSTDIR\FrameLink.exe"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "FrameLink"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\FrameLink.exe"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
-  WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
-  WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "FrameLink"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\FrameLink.exe"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
+  WriteRegDWORD HKLM "${UNINSTALL_KEY}" "NoModify" 1
+  WriteRegDWORD HKLM "${UNINSTALL_KEY}" "NoRepair" 1
   Goto installed
 
+rollback:
+  ExecWait '"$WINDIR\Sysnative\regsvr32.exe" /s /u "$INSTDIR\resources\FrameLinkCamera-x64.dll"'
+camera_failed:
+  MessageBox MB_ICONSTOP "Не удалось зарегистрировать FrameLink Camera." /SD IDOK
+  SetErrorLevel 2
+  Abort
+
 installation_failed:
-  MessageBox MB_ICONSTOP "Не удалось установить FrameLink. Закройте приложение и повторите установку."
+  MessageBox MB_ICONSTOP "Не удалось установить FrameLink. Закройте FrameLink и приложения, использующие камеру." /SD IDOK
   SetErrorLevel 1
   Abort
 installed:
 SectionEnd
 
 Section "Uninstall"
-  SetShellVarContext current
-  StrCmp "$INSTDIR" "$LOCALAPPDATA\Programs\FrameLink" 0 invalid_directory
+  SetShellVarContext all
+  SetRegView 64
+  StrCmp "$INSTDIR" "$PROGRAMFILES64\FrameLink" 0 invalid_directory
   SetOutPath "$TEMP"
   Delete "$SMPROGRAMS\FrameLink.lnk"
-  DeleteRegKey HKCU "${UNINSTALL_KEY}"
+  ExecWait '"$WINDIR\Sysnative\regsvr32.exe" /s /u "$INSTDIR\resources\FrameLinkCamera-x64.dll"'
+  ExecWait '"$WINDIR\SysWOW64\regsvr32.exe" /s /u "$INSTDIR\resources\FrameLinkCamera-x86.dll"'
+  DeleteRegKey HKLM "${UNINSTALL_KEY}"
   RMDir /r "$INSTDIR"
   Goto removed
 
 invalid_directory:
-  MessageBox MB_ICONSTOP "Папка FrameLink не найдена."
+  MessageBox MB_ICONSTOP "Папка FrameLink не найдена." /SD IDOK
   SetErrorLevel 1
   Abort
 removed:

@@ -68,8 +68,27 @@ void main() {
     vec3 bg = texture(backgroundImage, (uv - .5) * backgroundCrop + .5).rgb;
     result = vec4(mix(bg, foreground, alpha), 1.0);
   } else {
-    result = vec4(foreground, alpha);
+    result = vec4(foreground * alpha, alpha);
   }
+}`;
+
+const layerSource = `#version 300 es
+precision highp float;
+in vec2 point;
+out vec4 result;
+uniform sampler2D image;
+uniform vec4 bounds;
+uniform float opacity;
+uniform bool fromFramebuffer;
+uniform bool bgra;
+void main() {
+  vec2 uv = (vec2(point.x, 1.0 - point.y) - bounds.xy) / bounds.zw;
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) discard;
+  if (fromFramebuffer) uv.y = 1.0 - uv.y;
+  vec4 pixel = texture(image, uv);
+  if (bgra) pixel.rgb = pixel.bgr;
+  else if (!fromFramebuffer) pixel.rgb *= pixel.a;
+  result = pixel * opacity;
 }`;
 
 const packSource = `#version 300 es
@@ -86,7 +105,7 @@ vec3 source(vec2 pixel) {
   vec2 uv = ((pixel + .5) / outputSize - .5) / imageScale + .5;
   if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec3(0.0);
   vec4 color = texture(fullColor, vec2(uv.x, 1.0 - uv.y));
-  return color.rgb * color.a;
+  return color.rgb;
 }
 float luminance(vec2 pixel) {
   return (16.0 + 219.0 * dot(source(pixel), yCoefficients)) / 255.0;
@@ -131,7 +150,7 @@ function program(gl, fragment, names) {
 export class Compositor {
   constructor(canvas) {
     this.canvas = canvas;
-    const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false, antialias: false, depth: false });
+    const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false });
     if (!gl) throw new Error('WebGL 2 недоступен. Проверьте видеодрайвер.');
     this.gl = gl;
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -142,10 +161,13 @@ export class Compositor {
       'cameraImage', 'personMask', 'backgroundImage', 'rotation', 'effect', 'mirror', 'hasMask',
       'hasBackground', 'backgroundCrop', 'blurStep', 'keyColor', 'tolerance', 'maskThreshold', 'adjustments', 'mono'
     ]);
+    this.overlay = program(gl, layerSource, ['image', 'bounds', 'opacity', 'fromFramebuffer', 'bgra']);
     this.pack = program(gl, packSource, ['fullColor', 'outputSize', 'imageScale']);
     this.source = this.texture(gl.LINEAR);
     this.mask = this.texture(gl.LINEAR);
     this.background = this.texture(gl.LINEAR);
+    this.cameraScene = { texture: this.texture(gl.LINEAR), fbo: gl.createFramebuffer() };
+    this.layers = new Map();
     this.scene = { texture: this.texture(gl.LINEAR), fbo: gl.createFramebuffer() };
     this.packed = { texture: this.texture(gl.NEAREST), fbo: gl.createFramebuffer() };
     for (const texture of [this.mask, this.background]) {
@@ -200,16 +222,40 @@ export class Compositor {
     this.backgroundRatio = width / height;
   }
 
-  loadFrame(frame, rotation) {
-    const width = frame.displayWidth;
-    const height = frame.displayHeight;
-    const sideways = rotation % 180 !== 0;
-    const outputWidth = sideways ? height : width;
-    const outputHeight = sideways ? width : height;
-    if (this.canvas.width !== outputWidth) this.canvas.width = outputWidth;
-    if (this.canvas.height !== outputHeight) this.canvas.height = outputHeight;
-    this.upload(this.source, frame, width, height);
+  loadFrame(frame) {
+    this.frameWidth = frame.displayWidth;
+    this.frameHeight = frame.displayHeight;
+    this.upload(this.source, frame, this.frameWidth, this.frameHeight);
     this.hasFrame = true;
+  }
+
+  setSize(width, height) {
+    if (this.canvas.width !== width) this.canvas.width = width;
+    if (this.canvas.height !== height) this.canvas.height = height;
+  }
+
+  setLayerFrame(id, pixels, width, height, bgra = false) {
+    if (!width || !height || width > 8192 || height > 8192) return;
+    const gl = this.gl;
+    let entry = this.layers.get(id);
+    if (!entry) {
+      entry = { texture: this.texture(gl.LINEAR) };
+      this.layers.set(id, entry);
+    }
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, entry.texture);
+    if (entry.width === width && entry.height === height) {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    } else this.upload(entry.texture, pixels, width, height);
+    entry.width = width;
+    entry.height = height;
+    entry.bgra = bgra;
+  }
+
+  clearLayer(id) {
+    const entry = this.layers.get(id);
+    if (entry) this.gl.deleteTexture(entry.texture);
+    this.layers.delete(id);
   }
 
   bind(texture, unit, uniform) {
@@ -219,12 +265,13 @@ export class Compositor {
     gl.uniform1i(uniform, unit);
   }
 
-  draw(settings) {
-    if (!this.hasFrame) return;
+  drawCamera(settings) {
     const gl = this.gl;
-    const { width, height } = this.canvas;
-    this.resize(this.scene, width, height);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.scene.fbo);
+    const sideways = settings.rotation % 180 !== 0;
+    const width = sideways ? this.frameHeight : this.frameWidth;
+    const height = sideways ? this.frameWidth : this.frameHeight;
+    this.resize(this.cameraScene, width, height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.cameraScene.fbo);
     gl.viewport(0, 0, width, height);
     gl.useProgram(this.composite.id);
     const u = this.composite.uniforms;
@@ -246,6 +293,41 @@ export class Compositor {
     gl.uniform3fv(u.adjustments, settings.adjustments);
     gl.uniform1i(u.mono, Number(settings.mono));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  draw(settings, layers) {
+    const gl = this.gl;
+    const { width, height } = this.canvas;
+    if (this.hasFrame && layers.some(layer => layer.kind === 'camera')) this.drawCamera(settings);
+    this.resize(this.scene, width, height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.scene.fbo);
+    gl.viewport(0, 0, width, height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(this.overlay.id);
+    const u = this.overlay.uniforms;
+    for (const layer of layers) {
+      const camera = layer.kind === 'camera';
+      const source = camera ? (this.hasFrame ? this.cameraScene : null) : this.layers.get(layer.id);
+      if (!source) continue;
+      const boxWidth = layer.width * width / 100;
+      const boxHeight = layer.height * height / 100;
+      const fit = Math.min(boxWidth / source.width, boxHeight / source.height);
+      const drawWidth = source.width * fit;
+      const drawHeight = source.height * fit;
+      const x = layer.x / 100 + (boxWidth - drawWidth) / (2 * width);
+      const y = layer.y / 100 + (boxHeight - drawHeight) / (2 * height);
+      if (drawWidth <= 0 || drawHeight <= 0) continue;
+      this.bind(source.texture, 0, u.image);
+      gl.uniform4f(u.bounds, x, y, drawWidth / width, drawHeight / height);
+      gl.uniform1f(u.opacity, layer.opacity / 100);
+      gl.uniform1i(u.fromFramebuffer, Number(camera));
+      gl.uniform1i(u.bgra, Number(Boolean(source.bgra)));
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    gl.disable(gl.BLEND);
     this.present();
   }
 

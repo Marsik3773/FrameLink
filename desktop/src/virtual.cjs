@@ -51,8 +51,8 @@ class VirtualCamera {
       processHandle.once('close', code => {
         if (this.current === current) this.current = null;
         const message = diagnostic.includes('BUSY') ?
-          'OBS Virtual Camera занята. Остановите вывод камеры в OBS и попробуйте снова.' :
-          diagnostic.includes('MISSING') ? 'Установите OBS Virtual Camera в разделе «Вывод».' :
+          'FrameLink Camera занята' :
+          diagnostic.includes('MISSING') ? 'FrameLink Camera не зарегистрирована. Переустановите FrameLink.' :
           'Виртуальная камера остановлена' + (code ? ' (код ' + code + ')' : '');
         if (current.started) this.notify({ type: 'virtualStopped', message: current.stopping ? '' : message });
         fail(new Error(message));

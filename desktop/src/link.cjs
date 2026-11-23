@@ -1,6 +1,5 @@
 const tls = require('node:tls');
 const { isIP } = require('node:net');
-const { createHash, timingSafeEqual } = require('node:crypto');
 
 const HEADER_SIZE = 13;
 const LIMIT = { 1: 3 * 1024 * 1024, 2: 3 * 1024 * 1024, 3: 32 * 1024, 4: 4096 };
@@ -45,14 +44,12 @@ class PacketReader {
   }
 }
 
-function parseConnection(host, port, code) {
-  const normalized = (typeof code === 'string' ? code : '').toLowerCase().replace(/[\s-]/g, '');
-  if (!/^[0-9a-f]{28}$/.test(normalized)) throw new Error('Введите код с экрана FrameLink на телефоне');
+function parseConnection(host, port) {
   const address = typeof host === 'string' ? host.trim().replace(/^\[|\]$/g, '') : '';
   if (!isIP(address)) throw new Error('Введите IP-адрес телефона');
   const number = Number(port);
   if (!Number.isInteger(number) || number < 1024 || number > 65535) throw new Error('Укажите порт от 1024 до 65535');
-  return { host: address, port: number, fingerprint: normalized.slice(0, 16), secret: normalized.slice(16) };
+  return { host: address, port: number };
 }
 
 class Link {
@@ -70,17 +67,8 @@ class Link {
       rejectUnauthorized: false
     });
     this.socket.setNoDelay(true);
-    this.connectTimer = setTimeout(() => this.fail('Телефон не ответил. Проверьте IP, порт и сеть.'), 8000);
-    this.socket.once('secureConnect', () => {
-      const certificate = this.socket.getPeerCertificate()?.raw;
-      const expected = Buffer.from(connection.fingerprint, 'hex');
-      const actual = certificate && createHash('sha256').update(certificate).digest().subarray(0, 8);
-      if (!actual || !timingSafeEqual(actual, expected)) {
-        this.fail('Код принадлежит другому телефону. Сверьте адрес и код.');
-        return;
-      }
-      this.send({ type: 'hello', version: 1, secret: connection.secret });
-    });
+    this.connectTimer = setTimeout(() => this.fail('Телефон не ответил'), 8000);
+    this.socket.once('secureConnect', () => this.send({ type: 'hello', version: 2 }));
     this.socket.on('data', bytes => {
       if (this.stopped) return;
       this.lastData = Date.now();
@@ -88,7 +76,7 @@ class Link {
     });
     this.socket.on('error', error => {
       this.fail(error.code === 'ECONNREFUSED'
-        ? 'Телефон отклонил подключение. Запустите подключение в Android-приложении.'
+        ? 'Откройте доступ на телефоне'
         : 'Соединение разорвано: ' + (error.code || error.message));
     });
     this.socket.once('close', () => this.fail('Телефон отключился'));
@@ -101,7 +89,7 @@ class Link {
       if (!event || typeof event.type !== 'string') throw new Error('Телефон прислал неизвестное сообщение');
       if (!this.ready) {
         if (event.type === 'busy') return this.fail('Телефон уже подключён к другому компьютеру');
-        if (event.type === 'denied') return this.fail('Код подключения устарел или введён неверно');
+        if (event.type === 'version') return this.fail('Обновите FrameLink на телефоне');
         if (event.type !== 'ready') throw new Error('Ответ телефона не соответствует протоколу FrameLink');
         clearTimeout(this.connectTimer);
         this.ready = true;

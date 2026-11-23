@@ -46,6 +46,7 @@ final class CameraEngine implements AutoCloseable {
     private MediaCodec encoder;
     private JSONObject configuration;
     private byte[] parameterSets = new byte[0];
+    private int sessionGeneration;
     private int generation, height = 720, fps = 30, displayRotation;
     private int zoom = 100, ev, wb = CaptureRequest.CONTROL_AWB_MODE_AUTO, focus, shutter = 10000, iso = 200;
     private boolean enabled, front, manualExposure, manualFocus, needsKey = true;
@@ -84,10 +85,13 @@ final class CameraEngine implements AutoCloseable {
 
     void setPreview(SurfaceTexture value) {
         worker.post(() -> {
+            if (texture == value) return;
             texture = value;
-            if (enabled) reopen();
+            if (enabled && camera != null) configureSession(true);
         });
     }
+
+    void refreshPreview() { worker.post(this::sendPreview); }
 
     void rotation(int degrees) {
         worker.post(() -> {
@@ -178,15 +182,12 @@ final class CameraEngine implements AutoCloseable {
     @SuppressWarnings("MissingPermission")
     private void reopen() {
         release();
-        if (texture == null) return;
         try {
             setCharacteristics();
             clampSettings();
             selectFormat();
             createEncoder();
             int token = generation;
-            texture.setDefaultBufferSize(size.getWidth(), size.getHeight());
-            preview = new Surface(texture);
             sendPreview();
             sendState();
             manager.openCamera(front ? frontId : rearId, new CameraDevice.StateCallback() {
@@ -196,24 +197,7 @@ final class CameraEngine implements AutoCloseable {
                         return;
                     }
                     camera = opened;
-                    try {
-                        capture = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
-                        capture.addTarget(preview);
-                        capture.addTarget(encoderSurface);
-                        camera.createCaptureSession(Arrays.asList(preview, encoderSurface),
-                            new CameraCaptureSession.StateCallback() {
-                                @Override public void onConfigured(CameraCaptureSession ready) {
-                                    if (token != generation) { ready.close(); return; }
-                                    session = ready;
-                                    try { applySettings(); } catch (Exception e) { fail(e); }
-                                }
-                                @Override public void onConfigureFailed(CameraCaptureSession failed) {
-                                    if (token == generation) fail(new IllegalStateException("Камера не поддерживает выбранную комбинацию. Выберите более низкое разрешение или FPS."));
-                                }
-                            }, worker);
-                    } catch (Exception e) {
-                        fail(e);
-                    }
+                    configureSession(true);
                 }
                 @Override public void onDisconnected(CameraDevice device) {
                     device.close();
@@ -226,6 +210,48 @@ final class CameraEngine implements AutoCloseable {
             }, worker);
         } catch (Exception e) {
             fail(e);
+        }
+    }
+
+    private void configureSession(boolean allowPreview) {
+        int token = ++sessionGeneration;
+        if (session != null) { session.close(); session = null; }
+        if (preview != null) { preview.release(); preview = null; }
+        capture = null;
+        try {
+            if (allowPreview && texture != null && !texture.isReleased()) {
+                texture.setDefaultBufferSize(size.getWidth(), size.getHeight());
+                preview = new Surface(texture);
+            }
+            boolean withPreview = preview != null;
+            CaptureRequest.Builder request = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+            request.addTarget(encoderSurface);
+            if (withPreview) request.addTarget(preview);
+            java.util.List<Surface> targets = withPreview ? Arrays.asList(encoderSurface, preview)
+                : java.util.Collections.singletonList(encoderSurface);
+            camera.createCaptureSession(targets, new CameraCaptureSession.StateCallback() {
+                @Override public void onConfigured(CameraCaptureSession ready) {
+                    if (token != sessionGeneration) { ready.close(); return; }
+                    session = ready;
+                    capture = request;
+                    try {
+                        applySettings();
+                        keyframe();
+                    } catch (CameraAccessException | IllegalStateException failure) {
+                        if (withPreview) configureSession(false);
+                        else fail(failure);
+                    }
+                }
+                @Override public void onConfigureFailed(CameraCaptureSession failed) {
+                    failed.close();
+                    if (token != sessionGeneration) return;
+                    if (withPreview) configureSession(false);
+                    else fail(new IllegalStateException("Выберите другое разрешение или FPS"));
+                }
+            }, worker);
+        } catch (CameraAccessException | IllegalArgumentException | IllegalStateException failure) {
+            if (allowPreview && texture != null) configureSession(false);
+            else fail(failure);
         }
     }
 
@@ -412,6 +438,11 @@ final class CameraEngine implements AutoCloseable {
 
     private void applySettings() throws CameraAccessException {
         if (session == null || capture == null) return;
+        if (Build.VERSION.SDK_INT >= 31) {
+            int[] modes = characteristics.get(CameraCharacteristics.SCALER_AVAILABLE_ROTATE_AND_CROP_MODES);
+            if (modes != null && Arrays.stream(modes).anyMatch(mode -> mode == CaptureRequest.SCALER_ROTATE_AND_CROP_NONE))
+                capture.set(CaptureRequest.SCALER_ROTATE_AND_CROP, CaptureRequest.SCALER_ROTATE_AND_CROP_NONE);
+        }
         capture.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
         capture.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, cameraFps);
         capture.set(CaptureRequest.CONTROL_AWB_MODE, wb);
@@ -542,6 +573,7 @@ final class CameraEngine implements AutoCloseable {
 
     private void release() {
         generation++;
+        sessionGeneration++;
         if (session != null) { session.close(); session = null; }
         if (camera != null) { camera.close(); camera = null; }
         capture = null;

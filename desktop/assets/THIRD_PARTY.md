@@ -1,5 +1,6 @@
 # Сторонние компоненты
 
-- **Electron** включает Chromium и Node.js. Лицензии поставляются с Windows-приложением. [Electron](https://www.electronjs.org/)
-- **MediaPipe Tasks Vision** и модель **Selfie Segmenter** от Google обрабатывают маску человека локально. MediaPipe распространяется по Apache License 2.0. [MediaPipe](https://github.com/google-ai-edge/mediapipe) · [Модель](https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter) · [Лицензия](APACHE-2.0.txt)
-- **OBS Virtual Camera** устанавливается отдельно. Нативный модуль FrameLink передаёт NV12 в очередь совместимого формата. [Исходный код OBS Virtual Camera](https://github.com/obsproject/obs-studio/blob/31.0.4/plugins/win-dshow/shared-memory-queue.c)
+- **Electron** включает Chromium и Node.js. Их лицензии поставляются с Windows-приложением. [Electron](https://www.electronjs.org/)
+- **MediaPipe Tasks Vision** и **Selfie Segmenter** обрабатывают маску человека локально. [MediaPipe](https://github.com/google-ai-edge/mediapipe) · [Apache License 2.0](APACHE-2.0.txt)
+- **Microsoft DirectShow BaseClasses** используются в DLL системной камеры FrameLink. [Исходники](https://github.com/microsoft/Windows-classic-samples/tree/434f6002bdf9cf9829406c3ff2b33387982d6168/Samples/Win7Samples/multimedia/directshow/baseclasses) · [Лицензия](MICROSOFT-DIRECTSHOW-LICENSE.txt)
+- **Bootstrap Icons** используются для элементов интерфейса. [Лицензия](BOOTSTRAP-ICONS-LICENSE.txt)

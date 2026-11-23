@@ -33,12 +33,8 @@ test('rejects invalid sizes, timestamp and packet types before delivering a pack
   assert.throws(() => reader().push(packet(2, -4, Buffer.from([1]))), /время/);
 });
 
-test('parses the displayed code and validates connection parameters', () => {
-  const code = '01234567-89ABCDEF-112233-445566';
-  assert.deepEqual(parseConnection('[::1]', '4747', code), {
-    host: '::1', port: 4747, fingerprint: '0123456789abcdef', secret: '112233445566'
-  });
-  assert.throws(() => parseConnection('localhost', 4747, code), /IP/);
-  assert.throws(() => parseConnection('127.0.0.1', 0, code), /порт/);
-  assert.throws(() => parseConnection('127.0.0.1', 4747, '11223344'), /код/);
+test('validates an IP address and port without a pairing code', () => {
+  assert.deepEqual(parseConnection('[::1]', '4747'), { host: '::1', port: 4747 });
+  assert.throws(() => parseConnection('localhost', 4747), /IP/);
+  assert.throws(() => parseConnection('127.0.0.1', 0), /порт/);
 });

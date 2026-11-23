@@ -1,6 +1,6 @@
 {
   "name": "framelink",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Android camera and microphone for Windows",
   "author": "FrameLink",
   "private": true,
@@ -37,6 +37,14 @@
       {
         "from": "../LICENSE",
         "to": "FrameLink-LICENSE.txt"
+      },
+      {
+        "from": "native/FrameLinkCamera-x64.dll",
+        "to": "FrameLinkCamera-x64.dll"
+      },
+      {
+        "from": "native/FrameLinkCamera-x86.dll",
+        "to": "FrameLinkCamera-x86.dll"
       }
     ],
     "win": {
@@ -49,8 +57,8 @@
     "nsis": {
       "artifactName": "FrameLink-Windows-x64-Setup.exe",
       "oneClick": false,
-      "allowElevation": false,
-      "perMachine": false,
+      "allowElevation": true,
+      "perMachine": true,
       "script": "scripts/installer.nsi",
       "differentialPackage": false
     }

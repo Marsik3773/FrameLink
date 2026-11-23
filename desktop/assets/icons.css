@@ -1,0 +1,22 @@
+@font-face { font-family: Bootstrap Icons; src: url("bootstrap-icons.woff2") format("woff2"); font-display: block }
+.bi::before { display: inline-block; font: normal 1em/1 Bootstrap Icons }
+.bi-arrow-clockwise::before { content: "\f116"; }
+.bi-arrow-counterclockwise::before { content: "\f117"; }
+.bi-arrow-right::before { content: "\f138"; }
+.bi-camera::before { content: "\f220"; }
+.bi-camera-video::before { content: "\f21f"; }
+.bi-chevron-down::before { content: "\f282"; }
+.bi-chevron-up::before { content: "\f286"; }
+.bi-eye::before { content: "\f341"; }
+.bi-eye-slash::before { content: "\f340"; }
+.bi-film::before { content: "\f3c3"; }
+.bi-folder2-open::before { content: "\f3d8"; }
+.bi-gear::before { content: "\f3e5"; }
+.bi-globe2::before { content: "\f3ef"; }
+.bi-grip-vertical::before { content: "\f3fe"; }
+.bi-image::before { content: "\f42a"; }
+.bi-phone::before { content: "\f4e7"; }
+.bi-plus-lg::before { content: "\f64d"; }
+.bi-symmetry-horizontal::before { content: "\f5a8"; }
+.bi-trash3::before { content: "\f78b"; }
+.bi-type::before { content: "\f5f7"; }

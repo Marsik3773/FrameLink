@@ -9,8 +9,6 @@ import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.concurrent.Semaphore;
@@ -27,17 +25,15 @@ final class LinkServer implements AutoCloseable {
     }
 
     private final SSLServerSocket server;
-    private final Pairing pairing;
     private final Listener listener;
     private final Semaphore handshakes = new Semaphore(4);
     private final java.util.Set<SSLSocket> sockets = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private volatile Peer peer;
     private boolean closed;
 
-    LinkServer(int port, Pairing pairing, Listener listener) throws IOException {
-        this.pairing = pairing;
+    LinkServer(int port, ServerIdentity identity, Listener listener) throws IOException {
         this.listener = listener;
-        server = (SSLServerSocket) pairing.context.getServerSocketFactory().createServerSocket();
+        server = (SSLServerSocket) identity.context.getServerSocketFactory().createServerSocket();
         server.setEnabledProtocols(Arrays.stream(server.getSupportedProtocols())
             .filter(protocol -> protocol.equals("TLSv1.3") || protocol.equals("TLSv1.2"))
             .toArray(String[]::new));
@@ -58,7 +54,7 @@ final class LinkServer implements AutoCloseable {
         while (!server.isClosed()) {
             try {
                 SSLSocket socket = (SSLSocket) server.accept();
-                if (!handshakes.tryAcquire()) {
+                if (!Discovery.local(socket.getInetAddress()) || !handshakes.tryAcquire()) {
                     socket.close();
                     continue;
                 }
@@ -70,7 +66,7 @@ final class LinkServer implements AutoCloseable {
                     }
                     sockets.add(socket);
                 }
-                new Thread(() -> authenticate(socket), "FrameLink TLS").start();
+                new Thread(() -> negotiate(socket), "FrameLink TLS").start();
             } catch (IOException e) {
                 if (!server.isClosed()) listener.failed("Ошибка сокета: " + e.getMessage());
                 return;
@@ -78,7 +74,7 @@ final class LinkServer implements AutoCloseable {
         }
     }
 
-    private void authenticate(SSLSocket socket) {
+    private void negotiate(SSLSocket socket) {
         Peer active = null;
         try {
             socket.setTcpNoDelay(true);
@@ -88,10 +84,8 @@ final class LinkServer implements AutoCloseable {
             var input = new BufferedInputStream(socket.getInputStream());
             var output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(), 32 * 1024));
             JSONObject hello = read(input);
-            if (hello.optInt("version") != 1 || !MessageDigest.isEqual(
-                pairing.secret.getBytes(StandardCharsets.US_ASCII),
-                hello.optString("secret").getBytes(StandardCharsets.US_ASCII))) {
-                write(output, Wire.json(Wire.json("denied")));
+            if (hello.optInt("version") != 2 || !"hello".equals(hello.optString("type"))) {
+                write(output, Wire.json(Wire.json("version")));
                 return;
             }
             synchronized (this) {
@@ -130,6 +124,8 @@ final class LinkServer implements AutoCloseable {
             handshakes.release();
         }
     }
+
+    boolean busy() { return peer != null; }
 
     void send(Wire.Packet packet) {
         Peer current = peer;

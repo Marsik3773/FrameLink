@@ -6,7 +6,6 @@ import java.math.BigInteger;
 import java.net.Socket;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
-import java.security.MessageDigest;
 import java.security.Principal;
 import java.security.PrivateKey;
 import java.security.SecureRandom;
@@ -18,13 +17,11 @@ import javax.net.ssl.SSLEngine;
 import javax.net.ssl.X509ExtendedKeyManager;
 import javax.security.auth.x500.X500Principal;
 
-final class Pairing {
+final class ServerIdentity {
     private static final String ALIAS = "framelink-lan-ec";
     final SSLContext context;
-    final String fingerprint;
-    final String secret;
 
-    Pairing() throws Exception {
+    ServerIdentity() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);
         if (!store.containsAlias(ALIAS)) {
@@ -41,11 +38,6 @@ final class Pairing {
         PrivateKey key = (PrivateKey) store.getKey(ALIAS, null);
         X509Certificate certificate = (X509Certificate) store.getCertificate(ALIAS);
         SecureRandom random = new SecureRandom();
-        byte[] pin = new byte[6];
-        random.nextBytes(pin);
-        secret = hex(pin, pin.length);
-        fingerprint = hex(MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded()), 8);
-
         context = SSLContext.getInstance("TLS");
         context.init(new KeyManager[] { new X509ExtendedKeyManager() {
             @Override public String[] getClientAliases(String type, Principal[] issuers) { return null; }
@@ -72,17 +64,4 @@ final class Pairing {
         return "EC".equals(type) || "ECDSA".equals(type);
     }
 
-    String code() {
-        return fingerprint.substring(0, 8) + "-" + fingerprint.substring(8) + "-"
-            + secret.substring(0, 6) + "-" + secret.substring(6);
-    }
-
-    private static String hex(byte[] bytes, int count) {
-        StringBuilder value = new StringBuilder();
-        for (int i = 0; i < count; i++) {
-            value.append(Character.forDigit((bytes[i] & 255) >> 4, 16));
-            value.append(Character.forDigit(bytes[i] & 15, 16));
-        }
-        return value.toString();
-    }
 }
