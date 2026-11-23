@@ -2,8 +2,6 @@
 !include "x64.nsh"
 
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\FrameLink"
-!define MUI_ICON "${INSTALLER_ICON}"
-!define MUI_UNICON "${INSTALLER_ICON}"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\FrameLink.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Запустить FrameLink"
 
