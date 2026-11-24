@@ -60,6 +60,7 @@
       "allowElevation": true,
       "perMachine": true,
       "script": "scripts/installer.nsi",
+      "installerLanguages": ["ru_RU"],
       "differentialPackage": false
     }
   },

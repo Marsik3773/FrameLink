@@ -12,7 +12,7 @@ ShowInstDetails show
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
-!insertmacro MUI_LANGUAGE "Russian"
+!insertmacro addLangs
 
 Function .onInit
   ${IfNot} ${RunningX64}
