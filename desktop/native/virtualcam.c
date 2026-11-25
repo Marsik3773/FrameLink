@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include "frame_queue.h"
 #include <stdbool.h>
+#include <sddl.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -50,8 +51,14 @@ int main(int argc, char **argv)
         CloseHandle(writer);
         return 5;
     }
-    HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0,
+    PSECURITY_DESCRIPTOR descriptor = NULL;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:P(A;;GA;;;OW)(A;;GR;;;SY)(A;;GR;;;LS)(A;;GR;;;NS)",
+            SDDL_REVISION_1, &descriptor, NULL)) return 4;
+    SECURITY_ATTRIBUTES access = {sizeof(access), descriptor, FALSE};
+    HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, &access, PAGE_READWRITE, 0,
         sizeof(FrameQueue), FL_MAPPING);
+    LocalFree(descriptor);
     FrameQueue *queue = mapping ? MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, sizeof(FrameQueue)) : NULL;
     if (!queue) {
         if (mapping) CloseHandle(mapping);

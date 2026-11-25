@@ -37,6 +37,22 @@ function discover() {
     const query = Buffer.from('FrameLink/2 ' + nonce, 'ascii');
     const found = new Map();
     const socket = createSocket('udp4');
+    let bonjour;
+    let browser;
+    try {
+      const { Bonjour } = require('bonjour-service');
+      bonjour = new Bonjour({}, () => {});
+      browser = bonjour.find({ type: 'framelink', protocol: 'tcp' }, service => {
+        for (const host of service.addresses || []) {
+          if (!isIPv4(host) || !Number.isInteger(service.port) || service.port < 1024 || service.port > 65535) continue;
+          const key = host + ':' + service.port;
+          if (!found.has(key) && found.size < 64) {
+            const name = String(service.txt?.model || service.name).slice(0, 80);
+            found.set(key, { host, port: service.port, name, busy: false });
+          }
+        }
+      });
+    } catch { /* UDP broadcast remains available on networks without multicast. */ }
     let repeat;
     let closed = false;
     function done() {
@@ -44,11 +60,13 @@ function discover() {
       closed = true;
       clearTimeout(timeout);
       clearTimeout(repeat);
+      browser?.stop();
+      bonjour?.destroy();
       try { socket.close(); } catch {}
       resolve(Array.from(found.values()).sort((a, b) => a.name.localeCompare(b.name)));
     }
-    const timeout = setTimeout(done, 1250);
-    socket.on('error', done);
+    const timeout = setTimeout(done, 2100);
+    socket.on('error', () => {});
     socket.on('message', (bytes, { address }) => {
       const phone = readReply(bytes, address, nonce);
       if (phone && found.size < 64) found.set(phone.host + ':' + phone.port, phone);

@@ -50,6 +50,11 @@ Section "FrameLink"
   IfErrors rollback
   StrCmp $0 0 +2
   Goto rollback
+  ExecWait '"$WINDIR\Sysnative\regsvr32.exe" /s "$INSTDIR\resources\FrameLinkMediaSource.dll"' $0
+  StrCmp $0 0 +2
+  Goto camera_failed
+  ExecWait '"$INSTDIR\resources\framelink-camera-register.exe" --install' $0
+  DetailPrint "Media Foundation: $0"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateShortcut "$SMPROGRAMS\FrameLink.lnk" "$INSTDIR\FrameLink.exe"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "FrameLink"
@@ -80,6 +85,8 @@ Section "Uninstall"
   SetRegView 64
   StrCmp "$INSTDIR" "$PROGRAMFILES64\FrameLink" 0 invalid_directory
   SetOutPath "$TEMP"
+  ExecWait '"$INSTDIR\resources\framelink-camera-register.exe" --remove'
+  ExecWait '"$WINDIR\Sysnative\regsvr32.exe" /s /u "$INSTDIR\resources\FrameLinkMediaSource.dll"'
   Delete "$SMPROGRAMS\FrameLink.lnk"
   ExecWait '"$WINDIR\Sysnative\regsvr32.exe" /s /u "$INSTDIR\resources\FrameLinkCamera-x64.dll"'
   ExecWait '"$WINDIR\SysWOW64\regsvr32.exe" /s /u "$INSTDIR\resources\FrameLinkCamera-x86.dll"'

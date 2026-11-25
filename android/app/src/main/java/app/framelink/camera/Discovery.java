@@ -3,6 +3,8 @@ package app.framelink.camera;
 import android.content.Context;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.net.nsd.NsdManager;
+import android.net.nsd.NsdServiceInfo;
 import android.util.Log;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -21,6 +23,22 @@ final class Discovery implements AutoCloseable {
     private final int streamPort;
     private final BooleanSupplier busy;
 
+    private final NsdManager nsd;
+    private boolean closed;
+    private final NsdManager.RegistrationListener registration = new NsdManager.RegistrationListener() {
+        public void onServiceRegistered(NsdServiceInfo info) {
+            synchronized (Discovery.this) { if (closed) unregister(); }
+        }
+        public void onServiceUnregistered(NsdServiceInfo info) { }
+        public void onRegistrationFailed(NsdServiceInfo info, int code) { Log.d("FrameLink", "DNS-SD registration " + code); }
+        public void onUnregistrationFailed(NsdServiceInfo info, int code) { Log.d("FrameLink", "DNS-SD removal " + code); }
+    };
+
+    private void unregister() {
+        try { if (nsd != null) nsd.unregisterService(registration); }
+        catch (RuntimeException error) { Log.d("FrameLink", "DNS-SD removal", error); }
+    }
+
     Discovery(Context context, int streamPort, BooleanSupplier busy) throws IOException {
         this.streamPort = streamPort;
         this.busy = busy;
@@ -36,6 +54,16 @@ final class Discovery implements AutoCloseable {
         wifi = manager == null ? null : manager.createMulticastLock("FrameLink discovery");
         if (wifi != null) {
             try { wifi.acquire(); } catch (RuntimeException error) { Log.d("FrameLink", "Discovery Wi-Fi lock", error); }
+        }
+        nsd = context.getSystemService(NsdManager.class);
+        if (nsd != null) {
+            NsdServiceInfo info = new NsdServiceInfo();
+            info.setServiceName("FrameLink " + Build.MODEL);
+            info.setServiceType("_framelink._tcp.");
+            info.setPort(streamPort);
+            info.setAttribute("model", Build.MODEL);
+            try { nsd.registerService(info, NsdManager.PROTOCOL_DNS_SD, registration); }
+            catch (RuntimeException error) { Log.d("FrameLink", "DNS-SD unavailable", error); }
         }
         new Thread(this::respond, "FrameLink discovery").start();
     }
@@ -70,7 +98,9 @@ final class Discovery implements AutoCloseable {
         }
     }
 
-    @Override public void close() {
+    @Override public synchronized void close() {
+        closed = true;
+        unregister();
         socket.close();
         if (wifi != null && wifi.isHeld()) wifi.release();
     }

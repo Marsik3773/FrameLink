@@ -1,0 +1,14 @@
+name: Windows build and capture
+on:
+  push:
+    branches: [release-0.3.0]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Compile camera filters
+        run: ./desktop/scripts/build-camera.ps1

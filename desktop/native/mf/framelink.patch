@@ -1,0 +1,166 @@
+diff --git a/VCamSampleSource/FrameGenerator.cpp b/VCamSampleSource/FrameGenerator.cpp
+index 87df1b7..f2b7ac8 100644
+--- a/VCamSampleSource/FrameGenerator.cpp
++++ b/VCamSampleSource/FrameGenerator.cpp
+@@ -114,6 +114,7 @@ HRESULT FrameGenerator::CreateRenderTargetResources(UINT width, UINT height)
+ 	RETURN_IF_FAILED(_dwrite->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 40, L"", &_textFormat));
+ 	RETURN_IF_FAILED(_textFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER));
+ 	RETURN_IF_FAILED(_textFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER));
++	image.reset();
+ 	_width = width;
+ 	_height = height;
+ 	return S_OK;
+@@ -125,81 +126,24 @@ HRESULT FrameGenerator::Generate(IMFSample* sample, REFGUID format, IMFSample**
+ 	RETURN_HR_IF_NULL(E_POINTER, outSample);
+ 	*outSample = nullptr;
+ 
+-	// render something on image common to CPU & GPU
+-	if (_renderTarget && _textFormat && _dwrite && _whiteBrush)
+-	{
+-		_renderTarget->BeginDraw();
+-		_renderTarget->Clear(D2D1::ColorF(0, 0, 1, 1));
+-
+-		// draw some HSL blocks
+-		const float divisor = 20;
+-		for (UINT i = 0; i < _width / divisor; i++)
+-		{
+-			for (UINT j = 0; j < _height / divisor; j++)
+-			{
+-				wil::com_ptr_nothrow<ID2D1SolidColorBrush> brush;
+-				auto color = HSL2RGB((float)i / (_height / divisor), 1, ((float)j / (_width / divisor)));
+-				RETURN_IF_FAILED(_renderTarget->CreateSolidColorBrush(color, &brush));
+-				_renderTarget->FillRectangle(D2D1::Rect(i * divisor, j * divisor, (i + 1) * divisor, (j + 1) * divisor), brush.get());
+-			}
+-		}
+-
+-		auto radius = divisor * 2;
+-		const float padding = 1;
+-		_renderTarget->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(radius + padding, radius + padding), radius, radius), _whiteBrush.get());
+-		_renderTarget->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(radius + padding, _height - radius - padding), radius, radius), _whiteBrush.get());
+-		_renderTarget->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(_width - radius - padding, radius + padding), radius, radius), _whiteBrush.get());
+-		_renderTarget->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(_width - radius - padding, _height - radius - padding), radius, radius), _whiteBrush.get());
+-		_renderTarget->DrawRectangle(D2D1::Rect(radius, radius, _width - radius, _height - radius), _whiteBrush.get());
+-
+-		// draw resolution at center
+-		// note: we could optimize here and compute layout only once if text doesn't change (depending on the font, etc.)
+-		wchar_t text[127];
+-		wchar_t fmt[15];
+-		if (format == MFVideoFormat_NV12)
+-		{
+-			if (HasD3DManager())
+-			{
+-				lstrcpy(fmt, L"NV12 (GPU)");
+-			}
+-			else
+-			{
+-				lstrcpy(fmt, L"NV12 (CPU)");
+-			}
+-		}
+-		else
+-		{
+-			if (HasD3DManager())
+-			{
+-				lstrcpy(fmt, L"RGB32 (GPU)");
+-			}
+-			else
+-			{
+-				lstrcpy(fmt, L"RGB32 (CPU)");
+-			}
+-		}
+-
+-#define FRAMES_FOR_FPS 60 // number of frames to wait to compute fps from last measure
+-#define NS_PER_MS 10000
+-#define MS_PER_S 1000
+-
+-		if (!_fps || !(_frame % FRAMES_FOR_FPS))
+-		{
+-			auto time = MFGetSystemTime();
+-			_fps = (UINT)(MS_PER_S * NS_PER_MS * FRAMES_FOR_FPS / (time - _prevTime));
+-			_prevTime = time;
+-		}
+-
+-		auto len = wsprintf(text, L"Format: %s\nFrame#: %I64i\nFps: %u\nResolution: %u x %u", fmt, _frame, _fps, _width, _height);
+-
+-		wil::com_ptr_nothrow<IDWriteTextLayout> layout;
+-		RETURN_IF_FAILED(_dwrite->CreateTextLayout(text, len, _textFormat.get(), (FLOAT)_width, (FLOAT)_height, &layout));
+-
+-		_renderTarget->DrawTextLayout(D2D1::Point2F(0, 0), layout.get(), _whiteBrush.get());
+-		_renderTarget->EndDraw();
+-	}
+-
+-	// build a sample using either D3D/DXGI (GPU) or WIC (CPU)
++	// Upload the same composed frame used by the DirectShow filter.
++    try {
++        const BYTE* data = frames.latest();
++        pixels.resize(static_cast<size_t>(_width) * _height * 4);
++        convert(pixels.data(), _width, _height, false, 2, data, frames.width, frames.height);
++        if (!image) {
++            const auto props = D2D1::BitmapProperties(D2D1::PixelFormat(
++                DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
++            RETURN_IF_FAILED(_renderTarget->CreateBitmap(D2D1::SizeU(_width, _height),
++                nullptr, 0, props, &image));
++        }
++        RETURN_IF_FAILED(image->CopyFromMemory(nullptr, pixels.data(), _width * 4));
++        _renderTarget->BeginDraw();
++        _renderTarget->DrawBitmap(image.get());
++        RETURN_IF_FAILED(_renderTarget->EndDraw());
++    } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
++
++    // build a sample using either D3D/DXGI (GPU) or WIC (CPU)
+ 	wil::com_ptr_nothrow<IMFMediaBuffer> mediaBuffer;
+ 	if (HasD3DManager())
+ 	{
+diff --git a/VCamSampleSource/FrameGenerator.h b/VCamSampleSource/FrameGenerator.h
+index b9d46cc..36a4866 100644
+--- a/VCamSampleSource/FrameGenerator.h
++++ b/VCamSampleSource/FrameGenerator.h
+@@ -1,8 +1,13 @@
+ #pragma once
++#define FRAMELINK_FRAME_SERVER
++#include "frame_reader.h"
+ 
+ class FrameGenerator
+ {
+-	UINT _width;
++	QueueReader frames;
++    std::vector<BYTE> pixels;
++    wil::com_ptr_nothrow<ID2D1Bitmap> image;
++    UINT _width;
+ 	UINT _height;
+ 	ULONGLONG _frame;
+ 	MFTIME _prevTime;
+diff --git a/VCamSampleSource/MediaStream.cpp b/VCamSampleSource/MediaStream.cpp
+index baf739f..5b79dcd 100644
+--- a/VCamSampleSource/MediaStream.cpp
++++ b/VCamSampleSource/MediaStream.cpp
+@@ -24,7 +24,7 @@ HRESULT MediaStream::Initialize(IMFMediaSource* source, int index)
+ 	auto types = wil::make_unique_cotaskmem_array<wil::com_ptr_nothrow<IMFMediaType>>(2);
+ 
+ #define NUM_IMAGE_COLS 1280 // 640
+-#define NUM_IMAGE_ROWS 960 //480
++#define NUM_IMAGE_ROWS 720 //480
+ 
+ 	wil::com_ptr_nothrow<IMFMediaType> rgbType;
+ 	RETURN_IF_FAILED(MFCreateMediaType(&rgbType));
+@@ -49,7 +49,7 @@ HRESULT MediaStream::Initialize(IMFMediaSource* source, int index)
+ 		nv12Type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+ 		nv12Type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+ 		MFSetAttributeSize(nv12Type.get(), MF_MT_FRAME_SIZE, NUM_IMAGE_COLS, NUM_IMAGE_ROWS);
+-		nv12Type->SetUINT32(MF_MT_DEFAULT_STRIDE, (UINT)(NUM_IMAGE_COLS * 1.5));
++		nv12Type->SetUINT32(MF_MT_DEFAULT_STRIDE, NUM_IMAGE_COLS);
+ 		MFSetAttributeRatio(nv12Type.get(), MF_MT_FRAME_RATE, 30, 1);
+ 		// frame size * pixel bit size * framerate
+ 		bitrate = (uint32_t)(NUM_IMAGE_COLS * 1.5 * NUM_IMAGE_ROWS * 8 * 30);
+diff --git a/VCamSampleSource/dllmain.cpp b/VCamSampleSource/dllmain.cpp
+index b1c7c53..9695125 100644
+--- a/VCamSampleSource/dllmain.cpp
++++ b/VCamSampleSource/dllmain.cpp
+@@ -9,7 +9,7 @@
+ #include "Activator.h"
+ 
+ // 3cad447d-f283-4af4-a3b2-6f5363309f52
+-GUID CLSID_VCam = { 0x3cad447d,0xf283,0x4af4,{0xa3,0xb2,0x6f,0x53,0x63,0x30,0x9f,0x52} };
++GUID CLSID_VCam = { 0xadc42115,0x88ec,0x4fc1,{0x9c,0x0c,0xde,0x43,0xbe,0x1e,0xcd,0x41} };
+ HMODULE _hModule;
+ 
+ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
