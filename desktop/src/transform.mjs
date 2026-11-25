@@ -3,7 +3,7 @@ const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 export function transform(box, handle, dx, dy) {
   const { x, y, width, height } = box;
-  if (!handle) return { x: clamp(x + dx, -399, 100), y: clamp(y + dy, -399, 100), width, height };
+  if (!handle) return { x: clamp(x + dx, 1 - width, 99), y: clamp(y + dy, 1 - height, 99), width, height };
   const left = handle.includes('w'), top = handle.includes('n');
   let w = /[we]/.test(handle) ? clamp(width + (left ? -dx : dx), 1, 400) : width;
   let h = /[ns]/.test(handle) ? clamp(height + (top ? -dy : dy), 1, 400) : height;

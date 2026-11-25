@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('frameLink', {
   updateLogin: () => invoke('updates:login'),
   updateInstall: version => invoke('updates:install', version),
   virtualRepair: () => invoke('virtual:repair'),
+  modernCamera: () => invoke('virtual:modern'),
   virtualStatus: () => invoke('virtual:status'),
   virtualStart: (width, height, fps) => invoke('virtual:start', width, height, fps),
   virtualStop: () => invoke('virtual:stop'),

@@ -68,7 +68,13 @@ class Link {
     });
     this.socket.setNoDelay(true);
     this.connectTimer = setTimeout(() => this.fail('Телефон не ответил'), 8000);
-    this.socket.once('secureConnect', () => this.send({ type: 'hello', version: 2 }));
+    this.socket.once('secureConnect', () => {
+      this.fingerprint = this.socket.getPeerCertificate().fingerprint256;
+      if (connection.fingerprint && connection.fingerprint !== this.fingerprint) {
+        return this.fail('По этому адресу появился другой телефон', true);
+      }
+      this.send({ type: 'hello', version: 2 });
+    });
     this.socket.on('data', bytes => {
       if (this.stopped) return;
       this.lastData = Date.now();
@@ -88,8 +94,8 @@ class Link {
       const event = JSON.parse(bytes.toString('utf8'));
       if (!event || typeof event.type !== 'string') throw new Error('Телефон прислал неизвестное сообщение');
       if (!this.ready) {
-        if (event.type === 'busy') return this.fail('Телефон уже подключён к другому компьютеру');
-        if (event.type === 'version') return this.fail('Обновите FrameLink на телефоне');
+        if (event.type === 'busy') return this.fail('Телефон уже подключён к другому компьютеру', true);
+        if (event.type === 'version') return this.fail('Обновите FrameLink на телефоне', true);
         if (event.type !== 'ready') throw new Error('Ответ телефона не соответствует протоколу FrameLink');
         clearTimeout(this.connectTimer);
         this.ready = true;
@@ -99,7 +105,7 @@ class Link {
         }, 3000);
       }
       if (event.type === 'video') this.awaitKey = true;
-      if (event.type !== 'pong') this.onEvent(event);
+      if (['ready', 'video', 'audio', 'cameraError', 'settings'].includes(event.type)) this.onEvent(event);
       return;
     }
     if (!this.ready) return;
@@ -129,10 +135,10 @@ class Link {
     }
   }
 
-  fail(message) {
+  fail(message, final = false) {
     if (this.stopped) return;
     this.close();
-    this.onEvent({ type: 'disconnected', message });
+    this.onEvent({ type: 'disconnected', message, final });
   }
 
   close() {

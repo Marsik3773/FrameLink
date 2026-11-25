@@ -51,9 +51,9 @@ Section "FrameLink"
   StrCmp $0 0 +2
   Goto rollback
   ExecWait '"$WINDIR\Sysnative\regsvr32.exe" /s "$INSTDIR\resources\FrameLinkMediaSource.dll"' $0
-  StrCmp $0 0 +2
-  Goto camera_failed
+  StrCmp $0 0 0 mf_done
   ExecWait '"$INSTDIR\resources\framelink-camera-register.exe" --install' $0
+mf_done:
   DetailPrint "Media Foundation: $0"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateShortcut "$SMPROGRAMS\FrameLink.lnk" "$INSTDIR\FrameLink.exe"

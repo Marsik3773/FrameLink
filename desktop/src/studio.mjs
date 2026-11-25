@@ -132,6 +132,7 @@ function renderDevices() {
   const usb = el('connection').elements.transport.value === 'usb';
   const visible = !usb && connection === 'idle';
   show('discoveryResults', visible);
+  show('manualAddress', connection === 'idle');
   el('scanDevices').disabled = !visible || scanPending;
   show('connectButton', !visible || el('manualAddress').open);
   if (!visible) return;
@@ -214,6 +215,12 @@ function receive(event, port) {
       preferHardware = true;
       setConnection('live');
       setEmpty('Ожидание видео');
+      break;
+    case 'retrying':
+      endVideo();
+      setAudioState(false);
+      setConnection('connecting');
+      text('statusText', 'Восстанавливаем связь…');
       break;
     case 'disconnected': setConnection('idle', event.message); break;
     case 'settings': synchronizeCamera(event); break;
@@ -604,7 +611,8 @@ function configureOutput() {
     if (!compositor) return;
     await stopVirtual();
     const installed = await api.virtualStatus();
-    text('driverState', installed ? 'FrameLink Camera' : 'Камера недоступна');
+    const modern = await api.modernCamera();
+    text('driverState', modern ? 'FrameLink Camera · Media Foundation' : installed ? 'FrameLink Camera · DirectShow' : 'Камера недоступна');
     if (!installed) return;
     await api.virtualStart(width, height, fps);
     const output = { width, height, writing: false, version: -1, sentAt: 0 };

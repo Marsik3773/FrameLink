@@ -36,6 +36,7 @@ let search;
 let streamPort;
 let link;
 let generation = 0;
+let retryTimer;
 let forwardPort;
 let closing = false;
 const virtual = new VirtualCamera(publish);
@@ -47,6 +48,7 @@ function publish(event) {
 
 function closeLink() {
   generation++;
+  clearTimeout(retryTimer);
   link?.close();
   link = null;
 }
@@ -92,14 +94,30 @@ async function connect({ host, port, transport }) {
       throw new Error('ADB не видит один разрешённый телефон. Проверьте USB-отладку, кабель и подтверждение на телефоне.');
     }
   }
-  link = new Link(requested, event => {
+  let fingerprint;
+  let retries = 0;
+  const start = () => {
     if (attempt !== generation) return;
-    publish(event);
-    if (event.type === 'disconnected') {
-      link = null;
-      releaseForward();
-    }
-  });
+    const next = new Link({ ...requested, fingerprint }, event => {
+      if (attempt !== generation) return;
+      if (event.type === 'ready') {
+        fingerprint = next.fingerprint;
+        retries = 0;
+      }
+      if (event.type === 'disconnected') {
+        link = null;
+        if (!usb && fingerprint && !event.final && retries < 4) {
+          publish({ type: 'retrying' });
+          retryTimer = setTimeout(start, 1000 * 2 ** retries++);
+          return;
+        }
+        releaseForward();
+      }
+      publish(event);
+    });
+    link = next;
+  };
+  start();
   return true;
 }
 
@@ -141,6 +159,11 @@ function registerHandlers() {
     const command = `$p = Start-Process "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Verb RunAs -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + $env:ProgramFiles + '\\FrameLink\\resources\\repair-camera.ps1"') -Wait -PassThru; exit $p.ExitCode`;
     await run(join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
       ['-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true, timeout: 120000 });
+  });
+  handler('virtual:modern', async () => {
+    if (process.platform !== 'win32' || !app.isPackaged) return false;
+    return run(join(process.resourcesPath, 'framelink-camera-register.exe'), ['--probe'],
+      { windowsHide: true, timeout: 5000 }).then(() => true, () => false);
   });
   handler('virtual:status', () => virtual.status());
   handler('virtual:start', (width, height, fps) => virtual.start(width, height, fps));
