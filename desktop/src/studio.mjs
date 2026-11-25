@@ -720,6 +720,7 @@ el('updateInstall').onclick = async () => {
   catch (error) { text('updateVersion', error.message); }
   finally { el('updateInstall').disabled = el('updateSkip').disabled = false; }
 };
+el('cameraPrivacy').onclick = () => api.open('privacy');
 el('repairCamera').onclick = async () => {
   el('repairCamera').disabled = true;
   try { await api.virtualRepair(); configureOutput(); }

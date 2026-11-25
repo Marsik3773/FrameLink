@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 
 const page = `<video autoplay muted playsinline></video><script>
 (async () => {
+  console.log('Checking webcam permission');
   const initial = await navigator.mediaDevices.getUserMedia({video:true});
   initial.getTracks().forEach(t => t.stop());
   const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');

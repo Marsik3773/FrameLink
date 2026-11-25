@@ -30,6 +30,19 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           npm run build:win
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Grant camera access on the disposable Windows test runner
+        run: |
+          $store = 'SOFTWARE/Microsoft/Windows/CurrentVersion/CapabilityAccessManager/ConsentStore/webcam'
+          foreach ($key in @("HKLM:/$store","HKCU:/$store","HKCU:/$store/NonPackaged")) {
+            New-Item $key -Force | Out-Null
+            New-ItemProperty $key -Name Value -Value Allow -PropertyType String -Force | Out-Null
+          }
+          $policy = 'HKLM:/SOFTWARE/Policies/Microsoft/Camera'
+          New-Item $policy -Force | Out-Null
+          New-ItemProperty $policy -Name AllowCamera -Value 1 -PropertyType DWord -Force | Out-Null
+          $privacy = 'HKLM:/SOFTWARE/Policies/Microsoft/Windows/AppPrivacy'
+          New-Item $privacy -Force | Out-Null
+          New-ItemProperty $privacy -Name LetAppsAccessCamera -Value 1 -PropertyType DWord -Force | Out-Null
       - name: Install and check automatic camera output
         run: |
           $ErrorActionPreference = 'Stop'

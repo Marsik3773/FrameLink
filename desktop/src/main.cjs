@@ -14,6 +14,7 @@ const run = promisify(execFile);
 const origin = 'app://framelink';
 const root = resolve(__dirname, '..');
 const urls = {
+  privacy: 'ms-settings:privacy-webcam',
   adb: 'https://developer.android.com/tools/releases/platform-tools'
 };
 
