@@ -30,6 +30,11 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           npm run build:win
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Save installer for integration tests
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows
+          path: desktop/dist/FrameLink-Windows-x64-Setup.exe
       - name: Grant camera access on the disposable Windows test runner
         run: |
           $store = 'SOFTWARE/Microsoft/Windows/CurrentVersion/CapabilityAccessManager/ConsentStore/webcam'
@@ -107,11 +112,6 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Capture through browser permissions and device selection
         run: node desktop/scripts/verify-browser.cjs
-      - name: Save verified installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: Windows
-          path: desktop/dist/FrameLink-Windows-x64-Setup.exe
       - name: Attach the installer and checksum to the draft release
         env:
           GH_TOKEN: ${{ github.token }}

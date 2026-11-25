@@ -140,7 +140,7 @@ public:
     }
     STDMETHODIMP SetFormat(AM_MEDIA_TYPE* type) override {
         if (!type) return E_POINTER;
-        HRESULT hr;
+        HRESULT hr = S_OK;
         CMediaType candidate(*type, &hr);
         if (FAILED(hr)) return hr;
         hr = CheckMediaType(&candidate);
