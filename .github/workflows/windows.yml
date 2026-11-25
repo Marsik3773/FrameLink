@@ -4,11 +4,94 @@ on:
     branches: [release-0.3.0]
 permissions:
   contents: write
+
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Compile camera filters
-        run: ./desktop/scripts/build-camera.ps1
+      - name: Build installer
+        working-directory: desktop
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm ci --no-audit --no-fund
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run vendor
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./scripts/build-camera.ps1
+          npm test
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run build:win
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Install and check automatic camera output
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Resolve-Path 'desktop/dist/FrameLink-Windows-x64-Setup.exe').Path
+          $installed = Start-Process $setup -ArgumentList '/S' -PassThru
+          if (!$installed.WaitForExit(100000)) {
+            $installed.Kill()
+            throw 'Installation timed out'
+          }
+          if ($installed.ExitCode) { throw "Installation failed with code $($installed.ExitCode)" }
+          $target = Join-Path $env:ProgramFiles 'FrameLink'
+          $app = Join-Path $target 'FrameLink.exe'
+          $helper = Join-Path $target 'resources/framelink-virtualcam.exe'
+          foreach ($file in @($app, $helper, (Join-Path $target 'Uninstall.exe'))) {
+            if (!(Test-Path $file)) { throw "Missing installed file $file" }
+          }
+          & $helper --probe
+          if ($LASTEXITCODE) { throw 'The installer did not register FrameLink Camera' }
+
+          $profile = Join-Path $env:RUNNER_TEMP 'framelink-profile'
+          $p = Start-Process $app -WorkingDirectory $target -ArgumentList '--remote-debugging-port=5384', "--user-data-dir=$profile", '--no-sandbox','--enable-unsafe-swiftshader','--use-angle=swiftshader' -PassThru
+          try {
+            $page = $null
+            $writer = $null
+            for ($i = 0; $i -lt 50 -and (!$page -or !$writer) -and !$p.HasExited; $i++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $targets = Invoke-RestMethod -NoProxy -TimeoutSec 1 -Uri 'http://127.0.0.1:5384/json/list'
+                $page = @($targets) | Where-Object { $_.url -eq 'app://framelink/src/index.html' -and $_.title -eq 'FrameLink' } | Select-Object -First 1
+              } catch {}
+              $writer = Get-Process 'framelink-virtualcam' -ErrorAction SilentlyContinue
+            }
+            if (!$page -or !$writer) { throw 'App UI or automatic camera writer did not start' }
+            Write-Host 'The installed app started FrameLink Camera without user interaction.'
+            for ($i=0; $i -lt 10 -and !$p.MainWindowHandle; $i++) {
+              Start-Sleep -Milliseconds 400
+              $p.Refresh()
+            }
+            if (!$p.CloseMainWindow()) { throw 'Cannot close the visible FrameLink window' }
+            Start-Sleep -Seconds 1
+            if ($p.HasExited -or !(Get-Process 'framelink-virtualcam' -ErrorAction SilentlyContinue)) {
+              throw 'The app or camera stopped when the window closed'
+            }
+            Write-Host 'Windows background capture remains active after window close.'
+          } finally {
+            Stop-Process -Name FrameLink -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+            Stop-Process -Name framelink-virtualcam -Force -ErrorAction SilentlyContinue
+          }
+      - name: Capture a known frame from FrameLink Camera
+        run: |
+          if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+            Invoke-WebRequest https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile ffmpeg-win.zip
+            Expand-Archive ffmpeg-win.zip ffmpeg-win
+            $bin = (Get-ChildItem ffmpeg-win -Recurse -Filter ffmpeg.exe | Select-Object -First 1).DirectoryName
+            $env:Path = "$bin;$env:Path"
+          }
+          node desktop/scripts/verify-dshow.cjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Capture through browser permissions and device selection
+        run: node desktop/scripts/verify-browser.cjs
+      - name: Save verified installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows
+          path: desktop/dist/FrameLink-Windows-x64-Setup.exe

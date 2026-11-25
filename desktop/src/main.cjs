@@ -131,6 +131,17 @@ function registerHandlers() {
     link?.send({ type: 'settings', ...settings });
   });
   handler('link:keyframe', () => link?.send({ type: 'keyframe' }));
+  const updates = require('./updates.cjs');
+  handler('updates:check', updates.check);
+  handler('updates:login', () => updates.signIn(window));
+  handler('updates:install', updates.install);
+  handler('virtual:repair', async () => {
+    if (process.platform !== 'win32' || !app.isPackaged) throw new Error('Требуется установленная версия Windows');
+    // The administrator runs only the repair script in the fixed machine installation.
+    const command = `$p = Start-Process "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Verb RunAs -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + $env:ProgramFiles + '\\FrameLink\\resources\\repair-camera.ps1"') -Wait -PassThru; exit $p.ExitCode`;
+    await run(join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true, timeout: 120000 });
+  });
   handler('virtual:status', () => virtual.status());
   handler('virtual:start', (width, height, fps) => virtual.start(width, height, fps));
   handler('virtual:stop', () => virtual.stop());

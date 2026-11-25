@@ -70,7 +70,7 @@ public:
     }
 };
 
-void convert(BYTE* out, int width, int height, bool bottomUp, int color, const BYTE* frame, int sw, int sh)
+inline void convert(BYTE* out, int width, int height, bool bottomUp, int color, const BYTE* frame, int sw, int sh)
 {
     if (color == 0 && frame && width == sw && height == sh) {
         std::memcpy(out, frame, width * height * 3 / 2);

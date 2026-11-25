@@ -84,6 +84,8 @@ function setConnection(state, message = '') {
 function setTransport() {
   const usb = el('connection').elements.transport.value === 'usb';
   show('hostField', !usb);
+  if (usb) el('manualAddress').open = true;
+  el('manualAddress').querySelector('summary').textContent = usb ? 'Порт USB' : 'По IP-адресу';
   renderDevices();
   if (!usb) scanDevices();
   el('host').required = !usb;
@@ -131,6 +133,7 @@ function renderDevices() {
   const visible = !usb && connection === 'idle';
   show('discoveryResults', visible);
   el('scanDevices').disabled = !visible || scanPending;
+  show('connectButton', !visible || el('manualAddress').open);
   if (!visible) return;
   el('devices').replaceChildren(...devices.map(device => {
     const item = document.createElement('li');
@@ -165,11 +168,12 @@ async function scanDevices(showProgress = false) {
   catch { devices = []; }
   finally {
     scanPending = false;
-    if (devices.length || showProgress) errorText('discoveryHint', devices.length ? '' : 'Телефоны не найдены');
+    errorText('discoveryHint', devices.length ? '' : 'Откройте доступ на телефоне в той же сети Wi-Fi');
     renderDevices();
   }
 }
 
+el('manualAddress').addEventListener('toggle', renderDevices);
 el('scanDevices').addEventListener('click', () => scanDevices(true));
 setInterval(() => scanDevices(), 5500);
 
@@ -460,6 +464,7 @@ function redraw() {
     el('snapshot').disabled = !visible;
     show('empty', !visible);
     show('canvas', visible);
+    layers.canvasEditor.sync();
     if (compositor) {
       try {
         compositor.draw(readVisuals(), layers.drawables());
@@ -681,3 +686,36 @@ el('audioDelay').addEventListener('input', () => {
   text('delayValue', value('audioDelay') + ' мс');
   monitor.setDelay(value('audioDelay') / 1000);
 });
+
+let updateVersion;
+const checkUpdates = async (manual = false) => {
+  el('checkUpdates').disabled = true;
+  try {
+    const result = await api.updateCheck();
+    updateVersion = result.version;
+    const offer = result.state === 'new' && (manual || localStorage.getItem('skipped-version') !== result.version);
+    show('updateBar', offer);
+    show('loginUpdates', result.state === 'account');
+    if (offer) text('updateVersion', 'Доступна версия ' + result.version);
+    errorText('updateStatus', result.state === 'account' ? 'Для доступа к приватным релизам войдите в GitHub' :
+      manual && result.state === 'current' ? 'Установлена последняя версия' : '');
+  } catch (error) { if (manual) errorText('updateStatus', error.message); }
+  finally { el('checkUpdates').disabled = false; }
+};
+el('checkUpdates').onclick = () => checkUpdates(true);
+el('loginUpdates').onclick = async () => { await api.updateLogin(); await checkUpdates(true); };
+el('updateSkip').onclick = () => { localStorage.setItem('skipped-version', updateVersion); show('updateBar', false); };
+el('updateInstall').onclick = async () => {
+  el('updateInstall').disabled = el('updateSkip').disabled = true;
+  text('updateVersion', 'Загрузка обновления…');
+  try { await api.updateInstall(updateVersion); }
+  catch (error) { text('updateVersion', error.message); }
+  finally { el('updateInstall').disabled = el('updateSkip').disabled = false; }
+};
+el('repairCamera').onclick = async () => {
+  el('repairCamera').disabled = true;
+  try { await api.virtualRepair(); configureOutput(); }
+  catch { errorText('virtualError', 'Восстановление не завершено. Проверьте разрешение администратора и доступ Windows к камере'); }
+  finally { el('repairCamera').disabled = false; }
+};
+checkUpdates();

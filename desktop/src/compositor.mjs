@@ -315,8 +315,8 @@ export class Compositor {
       const boxWidth = layer.width * width / 100;
       const boxHeight = layer.height * height / 100;
       const fit = Math.min(boxWidth / source.width, boxHeight / source.height);
-      const drawWidth = source.width * fit;
-      const drawHeight = source.height * fit;
+      const drawWidth = layer.stretch ? boxWidth : source.width * fit;
+      const drawHeight = layer.stretch ? boxHeight : source.height * fit;
       const x = layer.x / 100 + (boxWidth - drawWidth) / (2 * width);
       const y = layer.y / 100 + (boxHeight - drawHeight) / (2 * height);
       if (drawWidth <= 0 || drawHeight <= 0) continue;

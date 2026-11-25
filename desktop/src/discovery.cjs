@@ -42,6 +42,7 @@ function discover() {
     try {
       const { Bonjour } = require('bonjour-service');
       bonjour = new Bonjour({}, () => {});
+      bonjour.server.mdns.on('error', () => {});
       browser = bonjour.find({ type: 'framelink', protocol: 'tcp' }, service => {
         for (const host of service.addresses || []) {
           if (!isIPv4(host) || !Number.isInteger(service.port) || service.port < 1024 || service.port > 65535) continue;

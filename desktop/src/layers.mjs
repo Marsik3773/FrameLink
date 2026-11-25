@@ -1,3 +1,4 @@
+import { CanvasEditor } from './transform.mjs';
 import { Background } from './background.mjs';
 
 const types = {
@@ -34,6 +35,7 @@ export class LayerStack {
     this.items = [{
       id: 'camera', name: 'Камера', kind: 'camera', visible: true, x: 0, y: 0, width: 100, height: 100, opacity: 100
     }];
+    this.canvasEditor = new CanvasEditor(this);
     this.connectControls();
     this.refresh();
   }
@@ -69,7 +71,7 @@ export class LayerStack {
         const input = event.target;
         if (!this.selected || !Number.isFinite(input.valueAsNumber) || !input.validity.valid) return;
         this.selected[key] = input.valueAsNumber;
-        if (this.selected.kind === 'text' && ['width', 'height'].includes(key)) this.paintText(this.selected);
+        if (['width', 'height'].includes(key)) this.selected.stretch = true;
         this.changed();
       });
     }
@@ -131,8 +133,8 @@ export class LayerStack {
   }
 
   paintText(item) {
-    const width = Math.max(16, Math.round(1280 * item.width / 100));
-    const height = Math.max(16, Math.round(720 * item.height / 100));
+    const width = 512;
+    const height = 245;
     const surface = new OffscreenCanvas(width, height);
     const context = surface.getContext('2d');
     context.fillStyle = item.color;
@@ -278,6 +280,7 @@ export class LayerStack {
       eye.addEventListener('click', () => {
         item.visible = !item.visible;
         syncEye();
+        this.canvasEditor.sync();
         if (item.kind === 'browser') this.api.browserVisibility(item.id, item.visible).catch(() => {});
         this.changed();
       });
@@ -288,6 +291,7 @@ export class LayerStack {
   }
 
   edit() {
+    this.canvasEditor.sync();
     const item = this.selected;
     el('layerEditor').hidden = !item;
     el('layerDelete').disabled = !item || item.kind === 'camera';
