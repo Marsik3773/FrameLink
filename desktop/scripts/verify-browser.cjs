@@ -9,13 +9,15 @@ const assert = require('node:assert/strict');
 
 const page = `<video autoplay muted playsinline></video><script>
 (async () => {
-  console.log('Checking webcam permission');
+  const before = await navigator.mediaDevices.enumerateDevices();
+  await fetch('/diagnostic',{method:'POST',body:JSON.stringify(before.map(d=>[d.kind,d.label]))});
   const initial = await navigator.mediaDevices.getUserMedia({video:true});
   initial.getTracks().forEach(t => t.stop());
   const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
   const cameras = devices.filter(d => d.label.includes('FrameLink Camera'));
   if (!cameras.length) throw Error('FrameLink missing: ' + devices.map(d => d.label));
   const readings = [];
+  await fetch('/diagnostic',{method:'POST',body:JSON.stringify(devices.map(d=>d.label))});
   for (const device of cameras) {
     const stream = await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:device.deviceId}}});
     try {
@@ -43,6 +45,7 @@ async function run() {
     const result = new Promise((resolve, reject) => {
       watchdog = setTimeout(() => reject(new Error('Browser capture timed out')), 65000);
       server.on('request', (req, res) => {
+        if (req.url === '/diagnostic') { req.on('data', chunk => console.log('Browser devices', chunk.toString())); res.end(); return; }
         if (req.url !== '/result') { res.setHeader('Content-Type','text/html'); res.end(page); return; }
         let body = '';
         req.on('data', chunk => body += chunk);

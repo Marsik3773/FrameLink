@@ -27,7 +27,7 @@ int wmain(int argc, wchar_t** argv) {
             for (UINT32 i = 0; i < count; ++i) {
                 wchar_t name[256]{};
                 if (SUCCEEDED(devices[i]->GetString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, name, 256, nullptr))
-                        && wcsstr(name, L"FrameLink Camera")) found = true;
+                        && wcsstr(name, L"FrameLink Camera") && !wcsstr(name, L"(DirectShow)")) found = true;
                 devices[i]->Release();
             }
             CoTaskMemFree(devices);

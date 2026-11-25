@@ -26,7 +26,7 @@ const timer = setTimeout(() => {
   feeding = setInterval(feed, 35);
   capture = spawn('ffmpeg', [
     '-hide_banner', '-loglevel', 'error', '-f', 'dshow', '-video_size', '640x360',
-    '-framerate', '30', '-pixel_format', 'nv12', '-i', 'video=FrameLink Camera',
+    '-framerate', '30', '-pixel_format', 'nv12', '-i', 'video=FrameLink Camera (DirectShow)',
     '-frames:v', '1', '-pix_fmt', 'nv12', '-threads', '1', '-f', 'rawvideo', 'pipe:1'
   ], { stdio: ['ignore','pipe','inherit'], windowsHide: true });
   const data = [];

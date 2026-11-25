@@ -59,6 +59,9 @@ jobs:
           foreach ($file in @($app, $helper, (Join-Path $target 'Uninstall.exe'))) {
             if (!(Test-Path $file)) { throw "Missing installed file $file" }
           }
+          Write-Host "Runner session $((Get-Process -Id $PID).SessionId)"
+          & (Join-Path $target 'resources/framelink-camera-register.exe') --probe
+          Write-Host "Media Foundation enumeration result: $LASTEXITCODE"
           & $helper --probe
           if ($LASTEXITCODE) { throw 'The installer did not register FrameLink Camera' }
 
