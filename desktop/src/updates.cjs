@@ -7,6 +7,7 @@ const { Transform } = require('node:stream');
 const { createHash } = require('node:crypto');
 
 const repo = 'https://github.com/Marsik3773/FrameLink';
+const latestRelease = 'https://api.github.com/repos/Marsik3773/FrameLink/releases/latest';
 const installer = 'FrameLink-Windows-x64-Setup.exe';
 const get = (path, timeout = 15000) => net.fetch(repo + path, {
   credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(timeout)
@@ -23,12 +24,17 @@ let downloading = false;
 async function check() {
   if (process.platform !== 'win32') return { state: 'unsupported' };
   available = null;
-  const response = await get('/releases/latest');
-  await response.body?.cancel();
-  if (response.status === 404) return { state: 'unavailable' };
-  if (!response.ok) throw new Error('Не удалось проверить обновления');
-  const tag = repo + '/releases/tag/v';
-  const version = response.url.startsWith(tag) ? response.url.slice(tag.length) : '';
+  const response = await net.fetch(latestRelease, {
+    credentials: 'omit', headers: { accept: 'application/vnd.github+json' },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    if (response.status === 404) return { state: 'unavailable' };
+    throw new Error('Не удалось проверить обновления');
+  }
+  const { tag_name: tag, draft, prerelease } = await response.json();
+  const version = typeof tag === 'string' && tag.startsWith('v') && !draft && !prerelease ? tag.slice(1) : '';
   if (!versionPattern.test(version)) throw new Error('Не удалось прочитать версию релиза');
   available = newer(version, app.getVersion()) ? version : null;
   return available ? { state: 'new', version } : { state: 'current' };
