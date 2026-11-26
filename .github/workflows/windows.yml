@@ -1,7 +1,7 @@
 name: Windows build and capture
 on:
   push:
-    branches: ['release-*']
+    branches: ['publish-0.3.1']
   workflow_dispatch:
 permissions:
   contents: write
@@ -126,4 +126,13 @@ jobs:
           $checksum = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content "$file.sha256" -Value $checksum -Encoding ascii
           gh release upload $tag $file "$file.sha256" --clobber
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Publish verified FrameLink 0.3.1 assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v0.3.1'
+          $files = gh release view $tag --json assets --jq '.assets[].name'
+          if ($LASTEXITCODE -or $files -notcontains 'FrameLink-Android.apk' -or $files -notcontains 'FrameLink-Windows-x64-Setup.exe' -or $files -notcontains 'FrameLink-Windows-x64-Setup.exe.sha256') { throw 'Missing release assets' }
+          gh release edit $tag --target 1c167c706b6081013c4aec299da5c698726000c0 --draft=false --latest
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
