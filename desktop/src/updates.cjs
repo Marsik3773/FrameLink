@@ -6,7 +6,7 @@ const { pipeline } = require('node:stream/promises');
 const { Transform } = require('node:stream');
 const { createHash } = require('node:crypto');
 
-const repo = 'https://github.com/Marsik3773/FrameLink-Updates';
+const repo = 'https://github.com/Marsik3773/FrameLink';
 const installer = 'FrameLink-Windows-x64-Setup.exe';
 const get = (path, timeout = 15000) => net.fetch(repo + path, {
   credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(timeout)
