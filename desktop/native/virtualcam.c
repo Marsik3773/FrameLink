@@ -12,12 +12,18 @@ _Static_assert(offsetof(FrameQueue, slot) == 8, "queue layout");
 
 static bool registered(void)
 {
-    HKEY key;
-    const wchar_t *path = L"CLSID\\" FL_CLSID_TEXT L"\\InprocServer32";
-    if (RegOpenKeyExW(HKEY_CLASSES_ROOT, path, 0, KEY_READ, &key) != ERROR_SUCCESS)
-        return false;
-    RegCloseKey(key);
-    return true;
+    const wchar_t *paths[] = {
+        L"CLSID\\" FL_CLSID_TEXT L"\\InprocServer32",
+        L"CLSID\\" FL_MF_CLSID_TEXT L"\\InprocServer32"
+    };
+    for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); ++i) {
+        HKEY key;
+        if (RegOpenKeyExW(HKEY_CLASSES_ROOT, paths[i], 0, KEY_READ, &key) == ERROR_SUCCESS) {
+            RegCloseKey(key);
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool read_frame(HANDLE input, uint8_t *data, uint32_t size)

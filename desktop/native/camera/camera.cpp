@@ -11,7 +11,7 @@
 
 namespace {
 const CLSID cameraId = {0xb9fa819f,0x52a7,0x498d,{0xbc,0x5d,0x03,0x68,0x54,0x4f,0x81,0xd5}};
-constexpr wchar_t cameraName[] = L"FrameLink Camera (DirectShow)";
+constexpr wchar_t cameraName[] = L"FrameLink Camera";
 constexpr DWORD nv12 = MAKEFOURCC('N','V','1','2');
 constexpr DWORD yuy2 = MAKEFOURCC('Y','U','Y','2');
 struct Size { int width, height; };

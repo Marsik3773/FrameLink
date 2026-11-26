@@ -41,7 +41,7 @@ class VirtualCamera {
       processHandle.stdout.on('data', data => {
         if (settled) return;
         stdout += data.toString('utf8');
-        if (!stdout.includes('READY\n')) return;
+        if (!/(?:^|\n)READY\r?\n/.test(stdout)) return;
         clearTimeout(timeout);
         settled = true;
         current.started = true;

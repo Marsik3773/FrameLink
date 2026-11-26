@@ -48,6 +48,14 @@ jobs:
           $privacy = 'HKLM:/SOFTWARE/Policies/Microsoft/Windows/AppPrivacy'
           New-Item $privacy -Force | Out-Null
           New-ItemProperty $privacy -Name LetAppsAccessCamera -Value 1 -PropertyType DWord -Force | Out-Null
+      - name: Install and upgrade the prior release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.3.0 --pattern FrameLink-Windows-x64-Setup.exe --dir previous
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $previous = Start-Process (Resolve-Path 'previous/FrameLink-Windows-x64-Setup.exe') -ArgumentList '/S' -Wait -PassThru
+          if ($previous.ExitCode) { exit $previous.ExitCode }
       - name: Install and check automatic camera output
         run: |
           $ErrorActionPreference = 'Stop'
@@ -83,6 +91,10 @@ jobs:
               } catch {}
               $writer = Get-Process 'framelink-virtualcam' -ErrorAction SilentlyContinue
             }
+            if ($page -and $writer) {
+              node desktop/scripts/verify-startup.cjs $page.webSocketDebuggerUrl
+              if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            }
             if (!$page -or !$writer) { throw 'App UI or automatic camera writer did not start' }
             Write-Host 'The installed app started FrameLink Camera without user interaction.'
             for ($i=0; $i -lt 10 -and !$p.MainWindowHandle; $i++) {
@@ -100,16 +112,6 @@ jobs:
             Start-Sleep -Seconds 1
             Stop-Process -Name framelink-virtualcam -Force -ErrorAction SilentlyContinue
           }
-      - name: Capture a known frame from FrameLink Camera
-        run: |
-          if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
-            Invoke-WebRequest https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile ffmpeg-win.zip
-            Expand-Archive ffmpeg-win.zip ffmpeg-win
-            $bin = (Get-ChildItem ffmpeg-win -Recurse -Filter ffmpeg.exe | Select-Object -First 1).DirectoryName
-            $env:Path = "$bin;$env:Path"
-          }
-          node desktop/scripts/verify-dshow.cjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Capture through browser permissions and device selection
         run: node desktop/scripts/verify-browser.cjs
       - name: Attach the installer and checksum to the draft release

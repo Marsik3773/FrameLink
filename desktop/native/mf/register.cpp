@@ -1,4 +1,4 @@
-#include <windows.h>
+#include "../frame_queue.h"
 #include <mfapi.h>
 #include <mfidl.h>
 #include <cwchar>
@@ -39,7 +39,7 @@ int wmain(int argc, wchar_t** argv) {
         IMFVirtualCamera* camera = nullptr;
         hr = create(MFVirtualCameraType_SoftwareCameraSource, MFVirtualCameraLifetime_System,
             MFVirtualCameraAccess_AllUsers, L"FrameLink Camera",
-            L"{ADC42115-88EC-4FC1-9C0C-DE43BE1ECD41}", nullptr, 0, &camera);
+            FL_MF_CLSID_TEXT, nullptr, 0, &camera);
         if (SUCCEEDED(hr)) {
             hr = wcscmp(argv[1], L"--remove") == 0 ? camera->Remove() : camera->Start(nullptr);
             camera->Release();

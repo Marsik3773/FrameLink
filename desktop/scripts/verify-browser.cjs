@@ -15,7 +15,7 @@ const page = `<video autoplay muted playsinline></video><script>
   initial.getTracks().forEach(t => t.stop());
   const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
   const cameras = devices.filter(d => d.label.includes('FrameLink Camera'));
-  if (!cameras.length) throw Error('FrameLink missing: ' + devices.map(d => d.label));
+  if (cameras.length !== 1) throw Error('Expected one FrameLink device: ' + devices.map(d => d.label));
   const readings = [];
   await fetch('/diagnostic',{method:'POST',body:JSON.stringify(devices.map(d=>d.label))});
   for (const device of cameras) {

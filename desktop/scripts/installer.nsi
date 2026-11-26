@@ -36,25 +36,11 @@ Section "FrameLink"
   IfErrors installation_failed
   IfFileExists "$INSTDIR\FrameLink.exe" 0 installation_failed
   IfFileExists "$INSTDIR\resources\app.asar" 0 installation_failed
-  ${If} ${FileExists} "$INSTDIR\resources\FrameLinkCamera-x64.dll"
-    ClearErrors
-    ExecWait '"$WINDIR\Sysnative\regsvr32.exe" /s "$INSTDIR\resources\FrameLinkCamera-x64.dll"' $0
-    IfErrors camera_failed
-    StrCmp $0 0 +2
-    Goto camera_failed
-  ${Else}
-    Goto installation_failed
-  ${EndIf}
   ClearErrors
-  ExecWait '"$WINDIR\SysWOW64\regsvr32.exe" /s "$INSTDIR\resources\FrameLinkCamera-x86.dll"' $0
-  IfErrors rollback
+  ExecWait '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resourcesepair-camera.ps1"' $0
+  IfErrors camera_failed
   StrCmp $0 0 +2
-  Goto rollback
-  ExecWait '"$WINDIR\Sysnative\regsvr32.exe" /s "$INSTDIR\resources\FrameLinkMediaSource.dll"' $0
-  StrCmp $0 0 0 mf_done
-  ExecWait '"$INSTDIR\resources\framelink-camera-register.exe" --install' $0
-mf_done:
-  DetailPrint "Media Foundation: $0"
+  Goto camera_failed
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateShortcut "$SMPROGRAMS\FrameLink.lnk" "$INSTDIR\FrameLink.exe"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "FrameLink"
@@ -66,8 +52,6 @@ mf_done:
   WriteRegDWORD HKLM "${UNINSTALL_KEY}" "NoRepair" 1
   Goto installed
 
-rollback:
-  ExecWait '"$WINDIR\Sysnative\regsvr32.exe" /s /u "$INSTDIR\resources\FrameLinkCamera-x64.dll"'
 camera_failed:
   MessageBox MB_ICONSTOP "Не удалось зарегистрировать FrameLink Camera." /SD IDOK
   SetErrorLevel 2

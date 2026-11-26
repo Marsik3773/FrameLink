@@ -6,6 +6,7 @@
 #define FL_MAPPING L"Local\\FrameLink.Camera.Frames.v1"
 #define FL_WRITER L"Local\\FrameLink.Camera.Writer.v1"
 #define FL_CLSID_TEXT L"{B9FA819F-52A7-498D-BC5D-0368544F81D5}"
+#define FL_MF_CLSID_TEXT L"{ADC42115-88EC-4FC1-9C0C-DE43BE1ECD41}"
 #define FL_FRAME_BYTES (1920 * 1080 * 3 / 2)
 #define FL_SLOT_COUNT 3
 
