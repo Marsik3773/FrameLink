@@ -152,7 +152,6 @@ function registerHandlers() {
   handler('link:keyframe', () => link?.send({ type: 'keyframe' }));
   const updates = require('./updates.cjs');
   handler('updates:check', updates.check);
-  handler('updates:login', () => updates.signIn(window));
   handler('updates:install', updates.install);
   handler('virtual:repair', async () => {
     if (process.platform !== 'win32' || !app.isPackaged) throw new Error('Требуется установленная версия Windows');

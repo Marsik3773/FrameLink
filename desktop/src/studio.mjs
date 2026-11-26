@@ -703,15 +703,13 @@ const checkUpdates = async (manual = false) => {
     updateVersion = result.version;
     const offer = result.state === 'new' && (manual || localStorage.getItem('skipped-version') !== result.version);
     show('updateBar', offer);
-    show('loginUpdates', result.state === 'account');
     if (offer) text('updateVersion', 'Доступна версия ' + result.version);
-    errorText('updateStatus', result.state === 'account' ? 'Для доступа к приватным релизам войдите в GitHub' :
-      manual && result.state === 'current' ? 'Установлена последняя версия' : '');
+    const messages = { unavailable: 'Канал обновлений недоступен', current: 'Установлена последняя версия' };
+    errorText('updateStatus', manual ? messages[result.state] : '');
   } catch (error) { if (manual) errorText('updateStatus', error.message); }
   finally { el('checkUpdates').disabled = false; }
 };
 el('checkUpdates').onclick = () => checkUpdates(true);
-el('loginUpdates').onclick = async () => { await api.updateLogin(); await checkUpdates(true); };
 el('updateSkip').onclick = () => { localStorage.setItem('skipped-version', updateVersion); show('updateBar', false); };
 el('updateInstall').onclick = async () => {
   el('updateInstall').disabled = el('updateSkip').disabled = true;

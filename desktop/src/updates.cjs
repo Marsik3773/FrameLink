@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, shell } = require('electron');
+const { app, net, shell } = require('electron');
 const { mkdtemp, rm } = require('node:fs/promises');
 const { createWriteStream } = require('node:fs');
 const { join } = require('node:path');
@@ -6,11 +6,10 @@ const { pipeline } = require('node:stream/promises');
 const { Transform } = require('node:stream');
 const { createHash } = require('node:crypto');
 
-const repo = 'https://github.com/Marsik3773/FrameLink';
+const repo = 'https://github.com/Marsik3773/FrameLink-Updates';
 const installer = 'FrameLink-Windows-x64-Setup.exe';
-const account = () => session.fromPartition('persist:framelink-updates');
-const get = (path, timeout = 15000) => account().fetch(repo + path, {
-  credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(timeout)
+const get = (path, timeout = 15000) => net.fetch(repo + path, {
+  credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(timeout)
 });
 const versionPattern = /^\d{1,5}\.\d{1,5}\.\d{1,5}$/;
 function newer(candidate, current) {
@@ -21,34 +20,18 @@ function newer(candidate, current) {
 }
 let available;
 let downloading = false;
-let login;
 async function check() {
   if (process.platform !== 'win32') return { state: 'unsupported' };
+  available = null;
   const response = await get('/releases/latest');
   await response.body?.cancel();
-  if ([401, 403, 404].includes(response.status) || new URL(response.url).pathname.startsWith('/login')) return { state: 'account' };
-  if (!response.ok) throw new Error('Не удалось проверить GitHub');
-  const version = response.url.startsWith(repo + '/releases/tag/v') ? response.url.slice((repo + '/releases/tag/v').length) : '';
+  if (response.status === 404) return { state: 'unavailable' };
+  if (!response.ok) throw new Error('Не удалось проверить обновления');
+  const tag = repo + '/releases/tag/v';
+  const version = response.url.startsWith(tag) ? response.url.slice(tag.length) : '';
   if (!versionPattern.test(version)) throw new Error('Не удалось прочитать версию релиза');
   available = newer(version, app.getVersion()) ? version : null;
   return available ? { state: 'new', version } : { state: 'current' };
-}
-function signIn(parent) {
-  if (login) { login.focus(); return; }
-  login = new BrowserWindow({ width: 840, height: 720, parent, title: 'GitHub', autoHideMenuBar: true,
-    webPreferences: { session: account(), sandbox: true, nodeIntegration: false, contextIsolation: true } });
-  account().setPermissionRequestHandler((_web, _permission, cb) => cb(false));
-  login.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  login.webContents.on('will-navigate', (event, url) => {
-    if (new URL(url).origin !== 'https://github.com') event.preventDefault();
-  });
-  return new Promise(resolve => {
-    login.once('closed', () => { login = null; resolve(); });
-    login.webContents.on('did-navigate', (_event, url) => {
-      if (url.startsWith(repo + '/releases/tag/')) login?.close();
-    });
-    login.loadURL('https://github.com/login?return_to=' + encodeURIComponent(repo + '/releases/latest')).catch(() => login?.close());
-  });
 }
 
 async function install(version) {
@@ -78,4 +61,4 @@ async function install(version) {
     throw error;
   } finally { downloading = false; }
 }
-module.exports = { check, signIn, install, newer };
+module.exports = { check, install, newer };
