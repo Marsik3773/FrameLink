@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.graphics.SurfaceTexture;
 import android.os.*;
+import android.net.wifi.WifiManager;
 import android.util.Log;
 import org.json.JSONObject;
 import java.net.Inet4Address;
@@ -41,6 +42,7 @@ public final class StreamService extends Service {
     private Discovery discovery;
     private Listener listener;
     private PowerManager.WakeLock wake;
+    private WifiManager.WifiLock wifi;
     private JSONObject cameraSettings, video;
     private int generation;
     int port = 4747;
@@ -53,6 +55,11 @@ public final class StreamService extends Service {
         var manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(CHANNEL, "FrameLink", NotificationManager.IMPORTANCE_LOW));
         wake = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FrameLink:video");
+        WifiManager managerWifi = getApplicationContext().getSystemService(WifiManager.class);
+        if (managerWifi != null) {
+            wifi = managerWifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "FrameLink:stream");
+            wifi.setReferenceCounted(false);
+        }
         microphone = new Microphone(this::send, message -> ui.post(() -> {
             micActive = false;
             publishAudio();
@@ -149,6 +156,10 @@ public final class StreamService extends Service {
                             connected = value;
                             error = "";
                             video = null;
+                            if (wifi != null) {
+                                if (value && !wifi.isHeld()) wifi.acquire();
+                                if (!value && wifi.isHeld()) wifi.release();
+                            }
                             if (value) {
                                 if (!wake.isHeld()) wake.acquire();
                                 camera.start();
@@ -257,6 +268,7 @@ public final class StreamService extends Service {
         error = "";
         camera.stop();
         if (wake.isHeld()) wake.release();
+        if (wifi != null && wifi.isHeld()) wifi.release();
         updateMic();
         LinkServer old = server;
         server = null;

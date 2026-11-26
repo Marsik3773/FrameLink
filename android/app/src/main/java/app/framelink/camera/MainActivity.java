@@ -37,7 +37,11 @@ public final class MainActivity extends Activity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private StreamService stream;
     private boolean bound, wantMicrophone;
-    private LinearLayout cameraPanel;
+    private LinearLayout cameraPanel, cameraActions, connection;
+    private ViewFlipper pages;
+    private Button settingsButton;
+    private boolean settingsOpen;
+    private boolean connectionOpen;
     private final StreamService.Listener observer = new StreamService.Listener() {
         @Override public void changed() { render(); }
         @Override public void settings(JSONObject state) { sync(state); }
@@ -190,13 +194,19 @@ public final class MainActivity extends Activity {
         boolean waiting = stream != null && stream.starting;
         start.setText(waiting ? "Отменить" : active ? "Закрыть доступ" : "Открыть доступ");
         port.setEnabled(!active);
+        port.setVisibility(active ? View.GONE : View.VISIBLE);
+        ((View) port.getParent()).setVisibility(active ? View.GONE : View.VISIBLE);
         if (active) port.setText(Integer.toString(stream.port));
         status.setText(live ? "Камера подключена" : waiting ? "Запуск…" : active ? "Доступна" : "Выключено");
         status.setTextColor(live ? MINT : MUTED);
         address.setVisibility(active && !waiting ? View.VISIBLE : View.GONE);
         if (active && !waiting) address.setText(StreamService.endpoints(stream.port));
         previewFrame.setVisibility(live ? View.VISIBLE : View.GONE);
-        cameraPanel.setVisibility(live ? View.VISIBLE : View.GONE);
+        if (!live) { settingsOpen = false; connectionOpen = false; }
+        cameraActions.setVisibility(live ? View.VISIBLE : View.GONE);
+        cameraPanel.setVisibility(live && settingsOpen ? View.VISIBLE : View.GONE);
+        connection.setVisibility(!live || connectionOpen ? View.VISIBLE : View.GONE);
+        settingsButton.setText(settingsOpen ? "Готово" : "Настройки");
         JSONObject video = stream == null ? null : stream.video();
         format.setVisibility(live && video != null ? View.VISIBLE : View.GONE);
         if (video != null) {
@@ -267,7 +277,7 @@ public final class MainActivity extends Activity {
         int frameWidth = previewFrame.getWidth(), frameHeight = previewFrame.getHeight();
         if (frameWidth == 0 || frameHeight == 0) return;
         boolean sideways = bufferRotation % 180 != 0;
-        float scale = Math.min(frameWidth / (float) (sideways ? bufferHeight : bufferWidth),
+        float scale = Math.max(frameWidth / (float) (sideways ? bufferHeight : bufferWidth),
             frameHeight / (float) (sideways ? bufferWidth : bufferHeight));
         int width = Math.max(1, Math.round(bufferWidth * scale));
         int height = Math.max(1, Math.round(bufferHeight * scale));
@@ -280,39 +290,48 @@ public final class MainActivity extends Activity {
     }
 
     private void makeUi() {
-        ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(BG);
-        scroll.setFillViewport(true);
-        LinearLayout column = vertical();
-        scroll.addView(column);
-        scroll.setOnApplyWindowInsetsListener((view, insets) -> {
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        FrameLayout screen = new FrameLayout(this);
+        screen.setBackgroundColor(BG);
+        previewFrame = new FrameLayout(this);
+        previewFrame.setBackgroundColor(0xff080a0c);
+        preview = new TextureView(this);
+        previewFrame.addView(preview, new FrameLayout.LayoutParams(1, 1, Gravity.CENTER));
+        screen.addView(previewFrame, new FrameLayout.LayoutParams(-1, -1));
+
+        FrameLayout chrome = new FrameLayout(this);
+        chrome.setPadding(dp(16), dp(12), dp(16), dp(12));
+        screen.addView(chrome, new FrameLayout.LayoutParams(-1, -1));
+        chrome.setOnApplyWindowInsetsListener((view, insets) -> {
             if (android.os.Build.VERSION.SDK_INT >= 30) {
-                var bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                column.setPadding(dp(20) + bars.left, dp(16) + bars.top, dp(20) + bars.right, dp(20) + bars.bottom);
+                var cutout = insets.getInsets(WindowInsets.Type.displayCutout());
+                chrome.setPadding(dp(16) + cutout.left, dp(12) + cutout.top,
+                    dp(16) + cutout.right, dp(12) + cutout.bottom);
             }
             return insets;
         });
-        column.setPadding(dp(20), dp(16), dp(20), dp(20));
-        setContentView(scroll);
+        setContentView(screen);
 
-        TextView title = text("FrameLink", 28, INK);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        column.addView(title);
-        status = text("Выключено", 14, MUTED);
-        add(column, status, 4);
-        previewFrame = new FrameLayout(this);
-        previewFrame.setBackground(shape(0xff080a0c, 14));
-        previewFrame.setClipToOutline(true);
-        preview = new TextureView(this);
-        previewFrame.addView(preview, new FrameLayout.LayoutParams(1, 1, Gravity.CENTER));
-        add(column, previewFrame, 18, dp(278));
-        format = text("", 12, MUTED);
-        add(column, format, 8);
-        cameraError = text("", 14, 0xffffb5ae);
-        cameraError.setVisibility(View.GONE);
-        add(column, cameraError, 4);
+        LinearLayout header = vertical();
+        header.setPadding(dp(12), dp(8), dp(12), dp(8));
+        header.setBackground(shape(0xce15191b, 10));
+        chrome.addView(header, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
+        TextView title = text("FrameLink", 18, INK);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        header.addView(title);
+        status = text("Выключено", 12, MUTED);
+        header.addView(status);
+        format = text("", 12, INK);
+        header.addView(format);
+        cameraError = text("", 13, 0xffffb5ae);
+        header.addView(cameraError);
 
-        LinearLayout connection = panel(column, "Подключение");
+        LinearLayout dock = vertical();
+        chrome.addView(dock, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        connection = panel(dock, "Подключение");
         address = text("", 15, INK);
         address.setTypeface(Typeface.MONOSPACE);
         address.setOnClickListener(view -> {
@@ -351,8 +370,14 @@ public final class MainActivity extends Activity {
             if (stream != null) stream.microphone(checked);
         });
 
-        LinearLayout controls = panel(column, "Камера");
-        cameraPanel = controls;
+        cameraPanel = panel(dock, "Камера");
+        LinearLayout tabs = new LinearLayout(this);
+        cameraPanel.addView(tabs);
+        pages = new ViewFlipper(this);
+        cameraPanel.addView(pages);
+        LinearLayout controls = settingsPage(tabs, "Кадр");
+        LinearLayout lighting = settingsPage(tabs, "Свет");
+        LinearLayout details = settingsPage(tabs, "Цвет и фокус");
         lens = spinner(controls, "Объектив", new String[]{"Основная", "Фронтальная"},
             index -> { if (index < cameraChoices.length) localSetting("front", cameraChoices[index] == 1); });
         resolution = spinner(controls, "Разрешение", new String[]{"360p", "480p", "720p", "1080p"},
@@ -362,17 +387,51 @@ public final class MainActivity extends Activity {
         resolution.setSelection(2, false);
         fps.setSelection(1, false);
         zoom = new Slider(controls, "Приближение", "zoom");
-        wb = spinner(controls, "Баланс белого", new String[]{"Авто"},
+        wb = spinner(details, "Баланс белого", new String[]{"Авто"},
             index -> { if (index < wbChoices.length) localSetting("wb", wbChoices[index]); });
-        exposureToggle = toggle(controls, "Ручная экспозиция");
+        exposureToggle = toggle(lighting, "Ручная экспозиция");
         exposureToggle.setOnCheckedChangeListener((button, checked) -> localSetting("manualExposure", checked));
-        exposure = new Slider(controls, "Экспокоррекция", "ev");
-        shutter = new Slider(controls, "Выдержка", "shutter");
-        iso = new Slider(controls, "ISO", "iso");
-        focusToggle = toggle(controls, "Ручной фокус");
+        exposure = new Slider(lighting, "Экспокоррекция", "ev");
+        shutter = new Slider(lighting, "Выдержка", "shutter");
+        iso = new Slider(lighting, "ISO", "iso");
+        focusToggle = toggle(details, "Ручной фокус");
         focusToggle.setOnCheckedChangeListener((button, checked) -> localSetting("manualFocus", checked));
-        focus = new Slider(controls, "Фокус", "focus");
+        focus = new Slider(details, "Фокус", "focus");
 
+        cameraActions = new LinearLayout(this);
+        add(dock, cameraActions, 8);
+        overlayButton(cameraActions, "Подключение", () -> {
+            connectionOpen = !connectionOpen;
+            settingsOpen = false;
+            render();
+        });
+        settingsButton = overlayButton(cameraActions, "Настройки", () -> {
+            settingsOpen = !settingsOpen;
+            connectionOpen = false;
+            render();
+        });
+    }
+
+    private LinearLayout settingsPage(LinearLayout tabs, String label) {
+        int index = pages.getChildCount();
+        LinearLayout page = vertical();
+        pages.addView(page);
+        overlayButton(tabs, label, () -> pages.setDisplayedChild(index));
+        return page;
+    }
+
+    private Button overlayButton(LinearLayout parent, String label, Runnable action) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setTextColor(INK);
+        button.setTextSize(13);
+        button.setAllCaps(false);
+        button.setBackground(shape(0xe722292a, 8));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(44), 1);
+        if (parent.getChildCount() > 0) params.leftMargin = dp(8);
+        parent.addView(button, params);
+        button.setOnClickListener(view -> action.run());
+        return button;
     }
 
     private void copy(CharSequence value) {
@@ -388,12 +447,12 @@ public final class MainActivity extends Activity {
 
     private LinearLayout panel(LinearLayout column, String name) {
         LinearLayout panel = vertical();
-        panel.setBackground(shape(PANEL, 14));
+        panel.setBackground(shape(0xe9191e20, 12));
         panel.setPadding(dp(15), dp(14), dp(15), dp(16));
         TextView heading = text(name, 17, INK);
         heading.setTypeface(Typeface.DEFAULT_BOLD);
         panel.addView(heading);
-        add(column, panel, 16);
+        add(column, panel, 8);
         return panel;
     }
 
@@ -475,7 +534,7 @@ public final class MainActivity extends Activity {
                 @Override public void onStartTrackingTouch(SeekBar bar) { dragged = true; }
                 @Override public void onStopTrackingTouch(SeekBar bar) { dragged = false; }
             });
-            add(layout, row, 12);
+            add(layout, row, 4);
         }
 
         void sync(int min, int max, int value, String display) {

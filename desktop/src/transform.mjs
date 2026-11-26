@@ -16,6 +16,39 @@ export function transform(box, handle, dx, dy) {
   return { x: left ? x + width - w : x, y: top ? y + height - h : y, width: w, height: h };
 }
 
+// Screen-pixel tolerance stays constant when the preview is resized.
+export function snapToFrame(start, next, handle, viewport, tolerance = 8) {
+  const nearest = (values, length) => values.flatMap(value => [0 - value, 100 - value])
+    .filter(delta => Math.abs(delta) * length / 100 <= tolerance)
+    .sort((a, b) => Math.abs(a) - Math.abs(b))[0];
+  const { x, y, width, height } = next;
+  if (!handle) {
+    return { ...next, x: x + (nearest([x, x + width], viewport.width) ?? 0),
+      y: y + (nearest([y, y + height], viewport.height) ?? 0) };
+  }
+
+  const horizontal = /[we]/.test(handle), vertical = /[ns]/.test(handle);
+  const left = handle.includes('w'), top = handle.includes('n');
+  const dx = horizontal ? nearest([left ? x : x + width], viewport.width) : undefined;
+  const dy = vertical ? nearest([top ? y : y + height], viewport.height) : undefined;
+  let w = width, h = height;
+  if (handle.length === 1) {
+    w += (left ? -1 : 1) * (dx ?? 0);
+    h += (top ? -1 : 1) * (dy ?? 0);
+  } else {
+    const useX = dx !== undefined && (dy === undefined || Math.abs(dx) * viewport.width <= Math.abs(dy) * viewport.height);
+    if (useX) {
+      w += (left ? -1 : 1) * dx;
+      h = w * start.height / start.width;
+    } else if (dy !== undefined) {
+      h += (top ? -1 : 1) * dy;
+      w = h * start.width / start.height;
+    }
+  }
+  if (w < 1 || h < 1 || w > 400 || h > 400) return next;
+  return { x: left ? x + width - w : x, y: top ? y + height - h : y, width: w, height: h };
+}
+
 export class CanvasEditor {
   constructor(stack) {
     this.stack = stack;
@@ -30,7 +63,9 @@ export class CanvasEditor {
     this.area.onpointerdown = event => this.begin(event);
     this.area.onpointermove = event => this.move(event);
     this.area.onpointercancel = this.area.onpointerup = event => {
-      if (event.pointerId === this.gesture?.pointer) this.gesture = null;
+      if (event.pointerId !== this.gesture?.pointer) return;
+      this.gesture = null;
+      delete this.area.dataset.snap;
     };
     new ResizeObserver(() => this.sync()).observe(this.canvas.parentElement);
   }
@@ -70,7 +105,10 @@ export class CanvasEditor {
     if (!g || event.pointerId !== g.pointer) return;
     const dx = 100 * (event.clientX - g.x) / g.bounds.width;
     const dy = 100 * (event.clientY - g.y) / g.bounds.height;
-    const values = transform(g.box, g.handle, dx, dy);
+    const moved = transform(g.box, g.handle, dx, dy);
+    const values = event.altKey ? moved : snapToFrame(g.box, moved, g.handle, g.bounds);
+    this.area.dataset.snap = Object.keys(values).some(key => Math.abs(values[key] - moved[key]) > 0.001)
+      ? 'true' : 'false';
     for (const key of Object.keys(values)) g.item[key] = Math.round(values[key] * 10) / 10;
     if (g.handle?.length === 1) g.item.stretch = true;
     this.stack.edit();
