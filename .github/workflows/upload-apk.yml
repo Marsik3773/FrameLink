@@ -1,0 +1,13 @@
+name: Upload signed Android
+on:
+  push:
+    branches: [apk-upload-0.3.1]
+permissions: {contents: write}
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: gh release upload v0.3.1 FrameLink-Android.apk
+        env:
+          GH_TOKEN: ${{ github.token }}
