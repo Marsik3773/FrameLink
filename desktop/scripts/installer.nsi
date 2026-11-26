@@ -37,7 +37,7 @@ Section "FrameLink"
   IfFileExists "$INSTDIR\FrameLink.exe" 0 installation_failed
   IfFileExists "$INSTDIR\resources\app.asar" 0 installation_failed
   ClearErrors
-  ExecWait '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resourcesepair-camera.ps1"' $0
+  ExecWait '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\repair-camera.ps1"' $0
   IfErrors camera_failed
   StrCmp $0 0 +2
   Goto camera_failed
